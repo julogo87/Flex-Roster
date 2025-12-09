@@ -1,0 +1,987 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flex Crew Roster - Crew Scheduling System</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Login Screen -->
+    <div class="login-screen" id="loginScreen">
+        <div class="login-container">
+            <div class="login-logo">
+                <svg viewBox="0 0 60 60" class="login-logo-icon">
+                    <circle cx="30" cy="30" r="27" fill="none" stroke="currentColor" stroke-width="2"/>
+                    <path d="M15 36 L30 18 L45 36 M30 18 L30 45" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <h1>Flex Crew Roster</h1>
+                <p>Crew Scheduling System</p>
+            </div>
+            <form class="login-form" id="loginForm">
+                <div class="login-field">
+                    <label for="loginUser">Usuario</label>
+                    <input type="text" id="loginUser" placeholder="Ingrese su usuario" required>
+                </div>
+                <div class="login-field">
+                    <label for="loginPassword">Contraseña</label>
+                    <input type="password" id="loginPassword" placeholder="Ingrese su contraseña" required>
+                </div>
+                <button type="submit" class="login-btn">Iniciar Sesión</button>
+                <div class="login-error" id="loginError"></div>
+            </form>
+            <div class="login-footer">
+                <p>Avianca Cargo - Crew Scheduling Operations</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main App Container (hidden until login) -->
+    <div class="app-container" id="appContainer" style="display: none;">
+    
+    <!-- Sidebar Navigation -->
+    <nav class="sidebar">
+        <div class="sidebar-header">
+            <div class="logo">
+                <svg viewBox="0 0 40 40" class="logo-icon">
+                    <circle cx="20" cy="20" r="18" fill="none" stroke="currentColor" stroke-width="2"/>
+                    <path d="M10 24 L20 12 L30 24 M20 12 L20 30" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <span class="logo-text">FLEX CREW<br>ROSTER</span>
+            </div>
+        </div>
+        
+        <div class="nav-section">
+            <div class="nav-label">DATOS</div>
+            <button class="nav-item active" data-view="upload">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="17,8 12,3 7,8"/><line x1="12" y1="3" x2="12" y2="15"/>
+                </svg>
+                <span>Cargar Datos</span>
+            </button>
+            <button class="nav-item" data-view="pilots">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                    <circle cx="9" cy="7" r="4"/>
+                </svg>
+                <span>Pilotos</span>
+                <span class="badge" id="pilotCount">0</span>
+            </button>
+            <button class="nav-item" data-view="rotations">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/>
+                    <polyline points="12,6 12,12 16,14"/>
+                </svg>
+                <span>Rotaciones</span>
+                <span class="badge" id="rotationCount">0</span>
+            </button>
+        </div>
+        
+        <div class="nav-section">
+            <div class="nav-label">PLANIFICACIÓN</div>
+            <button class="nav-item" data-view="scheduler">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                    <line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/>
+                    <line x1="3" y1="10" x2="21" y2="10"/>
+                </svg>
+                <span>Calendario</span>
+            </button>
+            <button class="nav-item" data-view="config">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="3"/>
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                </svg>
+                <span>Configuración</span>
+            </button>
+            <button class="nav-item" data-view="logs">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                    <line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/>
+                </svg>
+                <span>Historial</span>
+            </button>
+        </div>
+        
+        <div class="nav-section">
+            <div class="nav-label">ACCIONES</div>
+            <button class="nav-item action-btn" id="autoAssignBtn" disabled>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polygon points="13,2 3,14 12,14 11,22 21,10 12,10 13,2"/>
+                </svg>
+                <span>Auto-Asignar</span>
+            </button>
+            <button class="nav-item action-btn" id="validateBtn" disabled>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                    <polyline points="22 4 12 14.01 9 11.01"/>
+                </svg>
+                <span>Validar</span>
+            </button>
+            <button class="nav-item action-btn" id="saveStateBtn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+                    <polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>
+                </svg>
+                <span>Guardar</span>
+            </button>
+            <button class="nav-item action-btn" id="loadStateBtn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M3 15v4c0 1.1.9 2 2 2h14a2 2 0 0 0 2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+                </svg>
+                <span>Cargar</span>
+            </button>
+            <button class="nav-item action-btn" id="exportBtn" disabled>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                <span>Exportar</span>
+            </button>
+            <button class="nav-item action-btn" id="exportRosterBtn" disabled>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/>
+                </svg>
+                <span>Roster Individual</span>
+            </button>
+            <button class="nav-item action-btn" id="exportAllRostersBtn" disabled>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="18" height="18" rx="2"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="12" y1="8" x2="12" y2="16"/>
+                </svg>
+                <span>Exportar Todos</span>
+            </button>
+        </div>
+        
+        <div class="sidebar-footer">
+            <div class="user-info" id="userInfo">
+                <div class="user-avatar" id="userAvatar">U</div>
+                <div class="user-details">
+                    <span class="user-name" id="userName">Usuario</span>
+                    <button class="logout-btn" id="logoutBtn">Cerrar sesión</button>
+                </div>
+            </div>
+            
+            <!-- Toggle sidebar button - moved here -->
+            <button class="sidebar-toggle" id="sidebarToggle" title="Ocultar/Mostrar barra lateral">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M11 19l-7-7 7-7M18 19l-7-7 7-7"/>
+                </svg>
+            </button>
+            
+            <div class="stats-mini">
+                <div class="stat-item">
+                    <span class="stat-value" id="assignedStat">0%</span>
+                    <span class="stat-label">Asignado</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-value" id="coverageStat">0</span>
+                    <span class="stat-label">Cobertura</span>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content Area -->
+    <main class="main-content">
+        <header class="main-header">
+            <div class="header-left">
+                <h1 id="viewTitle">Avianca Cargo</h1>
+                <span class="header-subtitle" id="viewSubtitle"></span>
+            </div>
+            <div class="header-right">
+                <div class="period-selector">
+                    <button class="period-btn" id="prevPeriod">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15,18 9,12 15,6"/></svg>
+                    </button>
+                    <span class="period-label" id="currentPeriod">Enero 2026</span>
+                    <button class="period-btn" id="nextPeriod">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9,6 15,12 9,18"/></svg>
+                    </button>
+                </div>
+                
+                <div class="zoom-controls" id="zoomControls" style="display: none;">
+                    <button class="zoom-btn" id="zoomOut" title="Alejar">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                            <line x1="8" y1="11" x2="14" y2="11"/>
+                        </svg>
+                    </button>
+                    <span class="zoom-level" id="zoomLevel">100%</span>
+                    <button class="zoom-btn" id="zoomIn" title="Acercar">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                            <line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/>
+                        </svg>
+                    </button>
+                    <button class="zoom-btn" id="zoomReset" title="Reset">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>
+                        </svg>
+                    </button>
+                </div>
+                
+                <div class="view-toggles">
+                    <button class="toggle-btn active" data-range="month">Mes</button>
+                    <button class="toggle-btn" data-range="fortnight">Quincena</button>
+                    <button class="toggle-btn" data-range="week">Semana</button>
+                </div>
+                
+                <button class="theme-toggle" id="themeToggle" title="Cambiar tema">
+                    <svg class="sun-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+                        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+                        <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+                        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+                    </svg>
+                    <svg class="moon-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                    </svg>
+                </button>
+                
+                <div class="font-controls">
+                    <button class="font-btn" id="fontDecrease" title="Disminuir fuente">A-</button>
+                    <span class="font-size-label" id="fontSizeLabel">100%</span>
+                    <button class="font-btn" id="fontIncrease" title="Aumentar fuente">A+</button>
+                </div>
+            </div>
+        </header>
+
+        <div class="views-container">
+            <!-- Upload View -->
+            <section class="view active" id="uploadView">
+                <div class="upload-header">
+                    <h2>📅 Gestión de Datos por Mes</h2>
+                    <p>Administra el itinerario, pilotos y rotaciones de cada mes de forma independiente</p>
+                </div>
+                
+                <!-- Month Tabs -->
+                <div class="month-tabs-container">
+                    <div class="month-tabs" id="monthTabs">
+                        <!-- Tabs will be generated dynamically -->
+                    </div>
+                    <button class="btn-add-month-tab" id="addMonthTabBtn" title="Agregar nuevo mes">
+                        <span>+</span> Nuevo Mes
+                    </button>
+                </div>
+                
+                <!-- Month Content Panel -->
+                <div class="month-panel" id="monthPanel">
+                    <div class="month-panel-empty" id="monthPanelEmpty">
+                        <div class="empty-icon">📆</div>
+                        <h3>Comienza agregando un mes</h3>
+                        <p>Haz clic en "+ Nuevo Mes" para crear tu primer período de programación</p>
+                    </div>
+                    
+                    <div class="month-panel-content" id="monthPanelContent" style="display:none;">
+                        <div class="month-panel-header">
+                            <h3 id="currentMonthTitle">Enero 2026</h3>
+                            <div class="month-panel-actions">
+                                <button class="btn-action" id="exportMonthTrackingBtn" title="Exportar para Tracking">
+                                    📊 Exportar Tracking
+                                </button>
+                                <button class="btn-action" id="exportMonthBtn" title="Exportar datos del mes">
+                                    📤 Exportar Excel
+                                </button>
+                                <button class="btn-action danger" id="deleteMonthBtn" title="Eliminar este mes">
+                                    🗑️ Eliminar
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div class="month-stats-bar" id="monthStatsBar">
+                            <div class="month-stat-item">
+                                <span class="stat-icon">✈️</span>
+                                <span class="stat-value" id="monthFlights">0</span>
+                                <span class="stat-label">Vuelos</span>
+                            </div>
+                            <div class="month-stat-item">
+                                <span class="stat-icon">👨‍✈️</span>
+                                <span class="stat-value" id="monthPilots">0</span>
+                                <span class="stat-label">Pilotos</span>
+                            </div>
+                            <div class="month-stat-item">
+                                <span class="stat-icon">🔄</span>
+                                <span class="stat-value" id="monthRotations">0</span>
+                                <span class="stat-label">Rotaciones</span>
+                            </div>
+                            <div class="month-stat-item">
+                                <span class="stat-icon">📋</span>
+                                <span class="stat-value" id="monthSlots">0</span>
+                                <span class="stat-label">Slots</span>
+                            </div>
+                            <div class="month-stat-item">
+                                <span class="stat-icon">✅</span>
+                                <span class="stat-value" id="monthAssigned">0%</span>
+                                <span class="stat-label">Asignado</span>
+                            </div>
+                        </div>
+                        
+                        <div class="month-upload-section">
+                            <div class="upload-grid">
+                                <div class="upload-card" id="itineraryUpload">
+                                    <div class="upload-icon">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                            <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/>
+                                            <polyline points="14,2 14,8 20,8"/>
+                                        </svg>
+                                    </div>
+                                    <h3>Itinerario de Vuelos</h3>
+                                    <p>Archivo Excel con el itinerario</p>
+                                    <input type="file" id="itineraryFile" accept=".xlsx,.xls" hidden>
+                                    <label for="itineraryFile" class="upload-btn"><span>Seleccionar</span></label>
+                                    <div class="upload-status" id="itineraryStatus"></div>
+                                </div>
+                                
+                                <div class="upload-card" id="pilotsUpload">
+                                    <div class="upload-icon">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                                            <circle cx="9" cy="7" r="4"/>
+                                        </svg>
+                                    </div>
+                                    <h3>Base de Pilotos</h3>
+                                    <p>Archivo Excel con tripulación</p>
+                                    <input type="file" id="pilotsFile" accept=".xlsx,.xls" hidden>
+                                    <label for="pilotsFile" class="upload-btn"><span>Seleccionar</span></label>
+                                    <div class="upload-status" id="pilotsStatus"></div>
+                                </div>
+                            </div>
+                            
+                            <div class="generate-section" id="generateSection" style="display:none;">
+                                <button class="process-btn" id="generateRotationsBtn">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4"/>
+                                    </svg>
+                                    <span>Generar Rotaciones</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="sharepoint-section">
+                    <h3>☁️ Archivo Compartido (SharePoint)</h3>
+                    <p class="section-help">Guarda y carga datos desde un archivo JSON para compartir con tu equipo</p>
+                    <div class="sharepoint-actions">
+                        <button class="btn-sharepoint" id="exportSharePointBtn">
+                            <span>📤</span> Guardar Archivo
+                        </button>
+                        <label class="btn-sharepoint" for="importSharePointFile">
+                            <span>📥</span> Cargar Archivo
+                        </label>
+                        <input type="file" id="importSharePointFile" accept=".json" hidden>
+                    </div>
+                    <div class="sharepoint-info">
+                        <small>💡 Guarda el archivo en tu carpeta de SharePoint y compártelo con tu equipo. 
+                        Cualquiera puede cargarlo para ver los mismos datos.</small>
+                    </div>
+                </div>
+                
+                <div class="saved-states-section" id="savedStatesSection">
+                    <h3>💾 Estados Guardados (Local)</h3>
+                    <div class="saved-states-list" id="savedStatesList"></div>
+                </div>
+            </section>
+
+            <!-- Pilots View -->
+            <section class="view" id="pilotsView">
+                <div class="pilots-toolbar">
+                    <div class="search-box">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                        </svg>
+                        <input type="text" id="pilotSearch" placeholder="Buscar piloto...">
+                    </div>
+                    <div class="filter-group">
+                        <select id="baseFilter" class="filter-select"><option value="">Todas las bases</option></select>
+                        <select id="roleFilter" class="filter-select">
+                            <option value="">Todos los roles</option>
+                            <option value="CAP">Capitán</option>
+                            <option value="COP">Copiloto</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="pilots-grid" id="pilotsGrid"></div>
+            </section>
+
+            <!-- Rotations View -->
+            <section class="view" id="rotationsView">
+                <div class="rotations-toolbar">
+                    <div class="search-box">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                        </svg>
+                        <input type="text" id="rotationSearch" placeholder="Buscar rotación...">
+                    </div>
+                    <div class="filter-group">
+                        <select id="rotationRoleFilter" class="filter-select">
+                            <option value="">Todos los roles</option>
+                            <option value="CAP">CAP</option>
+                            <option value="COP">COP</option>
+                            <option value="CRP">CRP</option>
+                        </select>
+                        <select id="assignmentFilter" class="filter-select">
+                            <option value="">Todas</option>
+                            <option value="assigned">Asignadas</option>
+                            <option value="unassigned">Sin asignar</option>
+                        </select>
+                        <select id="rotationsTailFilter" class="filter-select">
+                            <option value="">Aeronave</option>
+                        </select>
+                        <select id="rotationsOriginFilter" class="filter-select">
+                            <option value="">Origen</option>
+                        </select>
+                        <input type="date" id="rotationsDateFilter" class="filter-input" title="Filtrar por fecha">
+                    </div>
+                    <div class="rotation-actions">
+                        <button class="btn-secondary btn-small" id="selectAllRotationsBtn">☑️ Seleccionar Todo</button>
+                        <button class="btn-secondary btn-small" id="mergeRotationsBtn">🔗 Unir Rotaciones</button>
+                    </div>
+                </div>
+                
+                <!-- Bulk Actions Bar (hidden until selection) -->
+                <div class="bulk-actions-bar" id="bulkActionsBar" style="display:none;">
+                    <div class="bulk-info">
+                        <span id="selectedCount">0</span> rotaciones seleccionadas
+                    </div>
+                    <div class="bulk-buttons">
+                        <button class="btn-bulk" id="bulkUnassignBtn">🚫 Desasignar</button>
+                        <button class="btn-bulk danger" id="bulkDeleteBtn">🗑️ Eliminar</button>
+                        <button class="btn-bulk" id="clearSelectionBtn">✖️ Cancelar</button>
+                    </div>
+                </div>
+                
+                <div class="rotations-list" id="rotationsList"></div>
+            </section>
+
+            <!-- Scheduler View -->
+            <section class="view" id="schedulerView">
+                <div class="scheduler-layout">
+                    <div class="unassigned-panel" id="unassignedPanel">
+                        <div class="panel-header">
+                            <h3>Sin Asignar</h3>
+                            <span class="unassigned-count" id="unassignedCount">0</span>
+                        </div>
+                        <div class="panel-filters">
+                            <select id="unassignedRoleFilter" class="filter-select-mini">
+                                <option value="">Todos</option>
+                                <option value="CAP">CAP</option>
+                                <option value="COP">COP</option>
+                                <option value="CRP">CRP</option>
+                            </select>
+                            <select id="unassignedSortFilter" class="filter-select-mini">
+                                <option value="date">Por Fecha</option>
+                                <option value="ft">Por FT</option>
+                                <option value="route">Por Ruta</option>
+                            </select>
+                            <select id="unassignedTailFilter" class="filter-select-mini">
+                                <option value="">Aeronave</option>
+                            </select>
+                            <input type="date" id="unassignedDateFilter" class="filter-input-mini" title="Filtrar por fecha">
+                            <select id="unassignedOriginFilter" class="filter-select-mini">
+                                <option value="">Origen</option>
+                            </select>
+                        </div>
+                        <div class="unassigned-list" id="unassignedList"></div>
+                    </div>
+                    
+                    <div class="scheduler-main">
+                        <div class="scheduler-toolbar">
+                            <div class="toolbar-left">
+                                <select id="calendarRoleFilter" class="filter-select">
+                                    <option value="">Todos los roles</option>
+                                    <option value="CAP">Capitanes</option>
+                                    <option value="COP">Copilotos</option>
+                                </select>
+                                <select id="calendarBaseFilter" class="filter-select">
+                                    <option value="">Todas las bases</option>
+                                </select>
+                                <input type="text" id="calendarPilotSearch" class="filter-input" placeholder="Buscar piloto..." title="Buscar piloto por nombre o ID">
+                                <div class="timezone-toggle">
+                                    <span class="tz-label">UTC-5</span>
+                                    <label class="toggle-switch">
+                                        <input type="checkbox" id="calendarUtcToggle">
+                                        <span class="toggle-slider"></span>
+                                    </label>
+                                    <span class="tz-label">UTC</span>
+                                </div>
+                            </div>
+                            <div class="toolbar-right">
+                                <button class="btn-verify" id="verifyAllBtn" title="Verificar todos los pilotos">
+                                    🔍 Verificar Todo
+                                </button>
+                                <div class="legend">
+                                    <span class="legend-item"><span class="legend-color rot"></span>ROT</span>
+                                    <span class="legend-item"><span class="legend-color rot-night"></span>Nocturno</span>
+                                    <span class="legend-item"><span class="legend-color dh"></span>DH</span>
+                                    <span class="legend-item"><span class="legend-color off"></span>OFF</span>
+                                    <span class="legend-item"><span class="legend-color vac"></span>VAC</span>
+                                    <span class="legend-item"><span class="legend-color trn"></span>TRN</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="scheduler-container" id="schedulerContainer">
+                            <div class="scheduler-scroll-wrapper">
+                                <div class="pilot-sidebar" id="pilotSidebar"></div>
+                                <div class="calendar-grid" id="calendarGrid"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Configuration View -->
+            <section class="view" id="configView">
+                <div class="config-layout">
+                    <div class="config-card">
+                        <h3>🛫 Bases Válidas</h3>
+                        <p class="config-description">Define las estaciones que se consideran como bases de tripulación. Las rotaciones deben iniciar y terminar en estas bases.</p>
+                        <div class="bases-list" id="basesList"></div>
+                        <div class="add-base-form">
+                            <input type="text" id="newBaseInput" placeholder="Código (ej: MIA)" maxlength="4">
+                            <button class="btn-primary" id="addBaseBtn">Agregar</button>
+                        </div>
+                    </div>
+                    
+                    <div class="config-card">
+                        <h3>📅 Días Festivos</h3>
+                        <p class="config-description">Define los días festivos que se mostrarán en el calendario.</p>
+                        <div class="holidays-list" id="holidaysList"></div>
+                        <div class="add-holiday-form">
+                            <input type="date" id="newHolidayDate">
+                            <input type="text" id="newHolidayName" placeholder="Nombre del festivo">
+                            <button class="btn-primary" id="addHolidayBtn">Agregar</button>
+                        </div>
+                    </div>
+                    
+                    <div class="config-card">
+                        <h3>✈️ Crear Rotación Manual</h3>
+                        <p class="config-description">Crea una rotación personalizada con múltiples tramos.</p>
+                        <div class="manual-rotation-form">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>ID Rotación</label>
+                                    <input type="text" id="manualRotId" placeholder="ROT-001">
+                                </div>
+                                <div class="form-group">
+                                    <label>Aeronave (Tail)</label>
+                                    <input type="text" id="manualRotTail" placeholder="N1234A">
+                                </div>
+                            </div>
+                            <div class="manual-legs" id="manualLegs">
+                                <div class="leg-item">
+                                    <input type="text" placeholder="Origen" class="leg-origin" maxlength="4">
+                                    <span>→</span>
+                                    <input type="text" placeholder="Destino" class="leg-dest" maxlength="4">
+                                    <input type="date" class="leg-date">
+                                    <input type="time" class="leg-dept" value="06:00">
+                                    <input type="time" class="leg-arvl" value="10:00">
+                                    <button class="btn-remove-leg">✕</button>
+                                </div>
+                            </div>
+                            <button class="btn-secondary" id="addLegBtn">+ Agregar Tramo</button>
+                            <div class="form-row" style="margin-top:12px;">
+                                <button class="btn-primary" id="createRotationBtn">Crear Rotación</button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="config-card">
+                        <h3>📊 Estado del Sistema</h3>
+                        <div class="system-status">
+                            <div class="status-item">
+                                <span class="status-label">Itinerario:</span>
+                                <span class="status-value" id="statusItinerary">No cargado</span>
+                            </div>
+                            <div class="status-item">
+                                <span class="status-label">Pilotos DB:</span>
+                                <span class="status-value" id="statusPilots">No cargado</span>
+                            </div>
+                            <div class="status-item">
+                                <span class="status-label">Rotaciones:</span>
+                                <span class="status-value" id="statusRotations">0</span>
+                            </div>
+                            <div class="status-item">
+                                <span class="status-label">Slots:</span>
+                                <span class="status-value" id="statusSlots">0</span>
+                            </div>
+                            <div class="status-item">
+                                <span class="status-label">Bases activas:</span>
+                                <span class="status-value" id="statusBases">MIA, BOG</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="config-card admin-only" id="userManagementCard">
+                        <h3>👥 Gestión de Usuarios</h3>
+                        <p class="config-description">Crear, editar y eliminar usuarios del sistema. Solo disponible para administradores.</p>
+                        <div class="users-list" id="usersList"></div>
+                        <div class="add-user-form" id="addUserForm">
+                            <h4>Crear Nuevo Usuario</h4>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Usuario</label>
+                                    <input type="text" id="newUsername" placeholder="username">
+                                </div>
+                                <div class="form-group">
+                                    <label>Contraseña</label>
+                                    <input type="password" id="newUserPassword" placeholder="contraseña">
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Nombre Completo</label>
+                                    <input type="text" id="newUserName" placeholder="Nombre Apellido">
+                                </div>
+                                <div class="form-group">
+                                    <label>Rol</label>
+                                    <select id="newUserRole">
+                                        <option value="viewer">Viewer</option>
+                                        <option value="scheduler">Scheduler</option>
+                                        <option value="admin">Admin</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <button class="btn-primary" id="createUserBtn">Crear Usuario</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- Logs View -->
+            <section class="view" id="logsView">
+                <div class="logs-container">
+                    <div class="logs-header">
+                        <h2>📋 Historial de Actividades</h2>
+                        <div class="logs-filters">
+                            <select id="logsTypeFilter">
+                                <option value="">Todos los tipos</option>
+                                <option value="login">Inicio sesión</option>
+                                <option value="assign">Asignaciones</option>
+                                <option value="create">Creaciones</option>
+                                <option value="delete">Eliminaciones</option>
+                                <option value="edit">Ediciones</option>
+                                <option value="export">Exportaciones</option>
+                            </select>
+                            <button class="btn-secondary" id="clearLogsBtn">Limpiar historial</button>
+                            <button class="btn-secondary" id="exportLogsBtn">Exportar logs</button>
+                        </div>
+                    </div>
+                    <div class="logs-list" id="logsList">
+                        <div class="logs-empty">No hay actividades registradas</div>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <!-- Modals -->
+    <div class="modal" id="pilotModal">
+        <div class="modal-overlay"></div>
+        <div class="modal-content pilot-detail-modal">
+            <button class="modal-close">&times;</button>
+            <div class="modal-header">
+                <div class="pilot-avatar" id="modalPilotAvatar"></div>
+                <div class="pilot-info">
+                    <h2 id="modalPilotName"></h2>
+                    <div class="pilot-meta">
+                        <span id="modalPilotId"></span>
+                        <span id="modalPilotBase"></span>
+                        <span id="modalPilotRole"></span>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-body">
+                <div class="hours-summary">
+                    <div class="hours-card">
+                        <span class="hours-label">Horas Mes</span>
+                        <span class="hours-value" id="modalMonthHours">0</span>
+                        <div class="hours-bar"><div class="hours-fill" id="modalMonthBar"></div></div>
+                        <span class="hours-limit">Máx: 90h</span>
+                    </div>
+                    <div class="hours-card">
+                        <span class="hours-label">Horas Q1</span>
+                        <span class="hours-value" id="modalQ1Hours">0</span>
+                        <div class="hours-bar"><div class="hours-fill" id="modalQ1Bar"></div></div>
+                        <span class="hours-limit">Máx: 50h</span>
+                    </div>
+                    <div class="hours-card">
+                        <span class="hours-label">Horas Q2</span>
+                        <span class="hours-value" id="modalQ2Hours">0</span>
+                        <div class="hours-bar"><div class="hours-fill" id="modalQ2Bar"></div></div>
+                        <span class="hours-limit">Máx: 50h</span>
+                    </div>
+                </div>
+                <div class="qualifications-section">
+                    <h4>Habilitaciones</h4>
+                    <div class="tails-list" id="modalTails"></div>
+                </div>
+                <div class="pilot-stats-section">
+                    <div class="pilot-stats-grid">
+                        <div class="pilot-stat-card">
+                            <span class="stat-icon">📅</span>
+                            <span class="stat-value" id="modalDaysOff">0</span>
+                            <span class="stat-label">Días Libres</span>
+                        </div>
+                        <div class="pilot-stat-card">
+                            <span class="stat-icon">✈️</span>
+                            <span class="stat-value" id="modalRotations">0</span>
+                            <span class="stat-label">Rotaciones</span>
+                        </div>
+                        <div class="pilot-stat-card">
+                            <span class="stat-icon">🚀</span>
+                            <span class="stat-value" id="modalDH">0</span>
+                            <span class="stat-label">DH</span>
+                        </div>
+                        <div class="pilot-stat-card">
+                            <span class="stat-icon">📚</span>
+                            <span class="stat-value" id="modalTraining">0</span>
+                            <span class="stat-label">TRN/OFI</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="assignments-section">
+                    <div class="assignments-header">
+                        <h4>Asignaciones</h4>
+                        <div class="assignments-actions">
+                            <button class="btn-action" id="verifyPilotBtn" title="Verificar continuidad y límites">
+                                <span>🔍</span> Verificar
+                            </button>
+                            <button class="btn-action" id="exportPilotRosterBtn" title="Exportar roster de este piloto">
+                                <span>📄</span> Exportar
+                            </button>
+                            <button class="btn-action danger" id="clearPilotAssignments" title="Eliminar todas las asignaciones">
+                                <span>🗑️</span> Limpiar
+                            </button>
+                        </div>
+                    </div>
+                    <div class="pilot-verification-results" id="pilotVerificationResults" style="display:none;"></div>
+                    <div class="assignments-list" id="modalAssignments"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="assignmentModal">
+        <div class="modal-overlay"></div>
+        <div class="modal-content assignment-modal">
+            <button class="modal-close">&times;</button>
+            <div class="modal-header"><h2>Crear Evento</h2></div>
+            <div class="modal-body">
+                <div class="event-type-selector">
+                    <button class="event-type" data-type="ROT"><span>ROT</span></button>
+                    <button class="event-type" data-type="DH"><span>DH</span></button>
+                    <button class="event-type" data-type="TRN"><span>TRN</span></button>
+                    <button class="event-type" data-type="OFI"><span>OFI</span></button>
+                    <button class="event-type active" data-type="OFF"><span>OFF</span></button>
+                    <button class="event-type" data-type="VAC"><span>VAC</span></button>
+                    <button class="event-type" data-type="LUS"><span>LUS</span></button>
+                    <button class="event-type" data-type="FREE"><span>LIBRE</span></button>
+                    <button class="event-type" data-type="INC"><span>INC</span></button>
+                </div>
+                <div class="event-form" id="eventForm" data-type="OFF">
+                    <div class="form-group">
+                        <label>Fecha Inicio</label>
+                        <input type="date" id="eventStartDate">
+                    </div>
+                    <div class="form-group">
+                        <label>Fecha Fin</label>
+                        <input type="date" id="eventEndDate">
+                    </div>
+                    <div class="form-group rotation-only">
+                        <label>Rotación</label>
+                        <select id="eventRotation"></select>
+                    </div>
+                    <div class="form-group dh-only">
+                        <label>Origen</label>
+                        <select id="dhOrigin"></select>
+                    </div>
+                    <div class="form-group dh-only">
+                        <label>Destino</label>
+                        <select id="dhDestination"></select>
+                    </div>
+                    <div class="form-group dh-only">
+                        <label>Hora Salida (UTC-5)</label>
+                        <input type="time" id="dhDeptTime" value="06:00">
+                    </div>
+                    <div class="form-group dh-only">
+                        <label>Hora Llegada (UTC-5)</label>
+                        <input type="time" id="dhArvlTime" value="10:00">
+                    </div>
+                    <div class="form-group dh-only">
+                        <label>Tiempo Vuelo (h)</label>
+                        <input type="number" id="dhFlightTime" step="0.5" min="0" max="12" value="3.5">
+                    </div>
+                    <div class="form-group dh-only">
+                        <label>Service Time (h)</label>
+                        <input type="number" id="dhServiceTime" step="0.5" min="0" max="20" value="5" title="Tiempo de servicio del DH">
+                    </div>
+                    <div class="form-group trn-ofi-only">
+                        <label>Hora Inicio</label>
+                        <input type="time" id="trnStartTime" value="08:00">
+                    </div>
+                    <div class="form-group trn-ofi-only">
+                        <label>Hora Fin</label>
+                        <input type="time" id="trnEndTime" value="16:00">
+                    </div>
+                    <div class="form-group full-width">
+                        <label>Notas</label>
+                        <textarea id="eventNotes" rows="2"></textarea>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" id="cancelEvent">Cancelar</button>
+                <button class="btn-primary" id="saveEvent">Guardar</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="validationModal">
+        <div class="modal-overlay"></div>
+        <div class="modal-content validation-modal">
+            <button class="modal-close">&times;</button>
+            <div class="modal-header"><h2>Resultados de Validación</h2></div>
+            <div class="modal-body">
+                <div class="validation-summary" id="validationSummary"></div>
+                <div class="validation-details" id="validationDetails"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-primary" id="closeValidation">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Rotation Edit Modal -->
+    <div class="modal" id="rotationEditModal">
+        <div class="modal-overlay"></div>
+        <div class="modal-content modal-large">
+            <button class="modal-close">&times;</button>
+            <div class="modal-header"><h2>Editar Rotación</h2></div>
+            <div class="modal-body">
+                <div class="rotation-edit-tabs">
+                    <button class="edit-tab active" data-tab="info">Información</button>
+                    <button class="edit-tab" data-tab="legs">Tramos</button>
+                    <button class="edit-tab" data-tab="crew">Tripulación</button>
+                </div>
+                
+                <!-- Tab: Info -->
+                <div class="edit-tab-content active" id="tabInfo">
+                    <div class="rotation-edit-info">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>ID Rotación</label>
+                                <input type="text" id="editRotationIdInput" class="form-input">
+                            </div>
+                            <div class="form-group">
+                                <label>Tail</label>
+                                <input type="text" id="editRotationTail" class="form-input">
+                            </div>
+                        </div>
+                        <div class="rotation-edit-summary">
+                            <div id="editRotationRoute"></div>
+                            <div id="editRotationTimes"></div>
+                            <div class="rotation-edit-hours">
+                                <span id="editRotationFT"></span> | <span id="editRotationST"></span> | <span id="editRotationSTGap"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Tab: Legs -->
+                <div class="edit-tab-content" id="tabLegs">
+                    <div class="legs-editor" id="legsEditor"></div>
+                    <div class="legs-actions" style="margin-top: 10px;">
+                        <button class="btn-secondary btn-small" id="addLegToRotation">+ Agregar Tramo</button>
+                        <button class="btn-secondary btn-small" id="splitRotationBtn">✂️ Dividir Aquí</button>
+                    </div>
+                </div>
+                
+                <!-- Tab: Crew -->
+                <div class="edit-tab-content" id="tabCrew">
+                    <div class="slots-editor" id="slotsEditor"></div>
+                    <div class="slots-actions" style="margin-top: 15px; display: flex; gap: 10px;">
+                        <button class="btn-secondary btn-small" id="addCapSlot">+ CAP</button>
+                        <button class="btn-secondary btn-small" id="addCopSlot">+ COP</button>
+                        <button class="btn-secondary btn-small" id="addCrpSlot">+ CRP</button>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-error btn-small" id="deleteRotationBtn">Eliminar Rotación</button>
+                <div style="flex:1"></div>
+                <button class="btn-secondary" id="cancelRotationEdit">Cancelar</button>
+                <button class="btn-primary" id="saveRotationEdit">Guardar Cambios</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Merge Rotations Modal -->
+    <div class="modal" id="mergeRotationsModal">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <button class="modal-close">&times;</button>
+            <div class="modal-header"><h2>🔗 Unir Rotaciones</h2></div>
+            <div class="modal-body">
+                <p style="margin-bottom: 15px; color: var(--text-secondary);">Selecciona dos rotaciones consecutivas para unirlas en una sola.</p>
+                <div class="form-group">
+                    <label>Primera Rotación</label>
+                    <select id="mergeRotation1" class="form-select"></select>
+                </div>
+                <div class="form-group">
+                    <label>Segunda Rotación</label>
+                    <select id="mergeRotation2" class="form-select"></select>
+                </div>
+                <div class="merge-preview" id="mergePreview"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" id="cancelMerge">Cancelar</button>
+                <button class="btn-primary" id="confirmMerge">Unir Rotaciones</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="rosterModal">
+        <div class="modal-overlay"></div>
+        <div class="modal-content roster-modal">
+            <button class="modal-close">&times;</button>
+            <div class="modal-header"><h2>Exportar Roster Individual</h2></div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Seleccionar Piloto</label>
+                    <select id="rosterPilotSelect"></select>
+                </div>
+                <div class="roster-preview" id="rosterPreview"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" id="cancelRoster">Cancelar</button>
+                <button class="btn-primary" id="downloadRoster">Descargar Excel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tooltip -->
+    <div class="event-tooltip" id="eventTooltip"></div>
+    
+    <!-- Toast -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- Context Menu -->
+    <div class="context-menu" id="contextMenu">
+        <button class="context-item" data-action="unassign"><span>Desasignar</span></button>
+        <button class="context-item" data-action="delete"><span>Eliminar</span></button>
+    </div>
+
+    <!-- Hidden file input for loading state -->
+    <input type="file" id="loadStateFile" accept=".json" hidden>
+    
+    </div><!-- End app-container -->
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
