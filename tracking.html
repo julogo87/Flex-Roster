@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flex Crew Tracking - Avianca Cargo</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="tracking.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+</head>
+<body>
+    <div class="app-container" id="appContainer">
+        <nav class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <svg viewBox="0 0 32 32" fill="none">
+                        <circle cx="16" cy="16" r="14" stroke="currentColor" stroke-width="2"/>
+                        <path d="M8 16h16M16 8v16M10 10l12 12M22 10L10 22" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                    </svg>
+                    <div class="logo-text">
+                        <span class="logo-title">Flex Crew</span>
+                        <span class="logo-subtitle tracking-badge">TRACKING</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="sidebar-nav">
+                <div class="nav-section">
+                    <div class="nav-label">VISTAS</div>
+                    <button class="nav-item active" data-view="calendar">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/>
+                            <line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+                        </svg>
+                        <span>Calendario</span>
+                    </button>
+                    <button class="nav-item" data-view="rotations">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83"/>
+                        </svg>
+                        <span>Rotaciones 9D</span>
+                    </button>
+                    <button class="nav-item" data-view="deviations">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M3 3v18h18"/><polyline points="18,17 12,11 8,15 3,10"/>
+                        </svg>
+                        <span>Desviaciones</span>
+                    </button>
+                </div>
+                
+                <div class="nav-section">
+                    <div class="nav-label">DATOS</div>
+                    <button class="nav-item" id="loadPlanBtn">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                            <polyline points="14 2 14 8 20 8"/>
+                        </svg>
+                        <span>Cargar Plan</span>
+                        <span class="nav-badge" id="planBadge" style="display:none">✓</span>
+                    </button>
+                    <button class="nav-item" id="load9DayBtn">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/>
+                            <line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+                        </svg>
+                        <span>Itinerario 9D</span>
+                        <span class="nav-badge" id="itinBadge" style="display:none">✓</span>
+                    </button>
+                    <input type="file" id="planFile" accept=".json" hidden>
+                    <input type="file" id="itinerary9DFile" accept=".xlsx,.xls" hidden>
+                </div>
+                
+                <div class="nav-section">
+                    <div class="nav-label">ACCIONES</div>
+                    <button class="nav-item action-btn" id="generateRotBtn">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polygon points="13,2 3,14 12,14 11,22 21,10 12,10 13,2"/>
+                        </svg>
+                        <span>Generar Rotaciones</span>
+                    </button>
+                    <button class="nav-item" id="analyzeBtn">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                        </svg>
+                        <span>Analizar Desviaciones</span>
+                    </button>
+                    <button class="nav-item" id="exportBtn">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/>
+                        </svg>
+                        <span>Exportar</span>
+                    </button>
+                    <button class="nav-item" id="saveBtn">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+                            <polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>
+                        </svg>
+                        <span>Guardar</span>
+                    </button>
+                </div>
+            </div>
+            
+            <div class="sidebar-footer">
+                <div class="stats-mini">
+                    <div class="stat-item">
+                        <span class="stat-value" id="deviationStat">0</span>
+                        <span class="stat-label">Desviaciones</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-value" id="rotationStat">0</span>
+                        <span class="stat-label">Rotaciones</span>
+                    </div>
+                </div>
+                <div class="sidebar-links">
+                    <a href="index.html" class="tracking-link roster-link">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+                        </svg>
+                        <span>Volver a Roster</span>
+                    </a>
+                </div>
+            </div>
+        </nav>
+
+        <main class="main-content">
+            <header class="main-header">
+                <div class="header-left">
+                    <h1 id="viewTitle">Calendario Dual</h1>
+                    <span class="header-subtitle" id="viewSubtitle">Plan vs Tracking</span>
+                </div>
+                <div class="header-right">
+                    <div class="period-selector">
+                        <button class="period-btn" id="prevPeriod">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15,18 9,12 15,6"/></svg>
+                        </button>
+                        <span class="period-label" id="currentPeriod">Diciembre 2025</span>
+                        <button class="period-btn" id="nextPeriod">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9,6 15,12 9,18"/></svg>
+                        </button>
+                    </div>
+                    <div class="window-selector">
+                        <label>Ventana:</label>
+                        <input type="date" id="windowStart" class="date-input">
+                        <span>→</span>
+                        <span id="windowEnd">-</span>
+                    </div>
+                    <div class="view-controls">
+                        <select id="roleFilter" class="filter-select">
+                            <option value="">Todos</option>
+                            <option value="CAP">Capitanes</option>
+                            <option value="COP">Copilotos</option>
+                        </select>
+                        <select id="baseFilter" class="filter-select">
+                            <option value="">Bases</option>
+                        </select>
+                        <input type="text" id="pilotSearch" class="search-input" placeholder="Buscar piloto...">
+                    </div>
+                </div>
+            </header>
+
+            <!-- CALENDAR VIEW -->
+            <section class="view-section active" id="calendarView">
+                <div class="scheduler-container">
+                    <div class="scheduler-header" id="schedulerHeader"></div>
+                    <div class="scheduler-body">
+                        <div class="pilot-sidebar" id="pilotSidebar"></div>
+                        <div class="calendar-grid" id="calendarGrid"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ROTATIONS VIEW -->
+            <section class="view-section" id="rotationsView">
+                <div class="rotations-toolbar">
+                    <span>Rotaciones 9D: <strong id="rotCount">0</strong></span>
+                    <input type="text" id="rotSearch" placeholder="Buscar..." class="search-input">
+                </div>
+                <div class="rotations-list" id="rotationsList"></div>
+            </section>
+
+            <!-- DEVIATIONS VIEW -->
+            <section class="view-section" id="deviationsView">
+                <div class="deviation-stats-bar">
+                    <div class="dev-stat cancelled"><span class="dev-icon">✗</span><span id="cancelledCount">0</span> Cancelados</div>
+                    <div class="dev-stat added"><span class="dev-icon">+</span><span id="addedCount">0</span> Añadidos</div>
+                    <div class="dev-stat modified"><span class="dev-icon">~</span><span id="modifiedCount">0</span> Modificados</div>
+                    <div class="dev-stat ok"><span class="dev-icon">✓</span><span id="okCount">0</span> Sin cambios</div>
+                </div>
+                <div class="deviations-list" id="deviationsList"></div>
+            </section>
+        </main>
+    </div>
+
+    <!-- PILOT MODAL -->
+    <div class="modal" id="pilotModal">
+        <div class="modal-overlay"></div>
+        <div class="modal-content modal-large">
+            <button class="modal-close">&times;</button>
+            <div id="pilotModalContent"></div>
+        </div>
+    </div>
+
+    <!-- ASSIGN MODAL -->
+    <div class="modal" id="assignModal">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <button class="modal-close">&times;</button>
+            <h3>Asignar Rotación</h3>
+            <div id="assignModalContent"></div>
+        </div>
+    </div>
+
+    <div class="toast-container" id="toastContainer"></div>
+    <script src="tracking.js"></script>
+</body>
+</html>

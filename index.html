@@ -114,13 +114,6 @@
                 </svg>
                 <span>Auto-Asignar</span>
             </button>
-            <button class="nav-item action-btn" id="validateBtn" disabled>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
-                    <polyline points="22 4 12 14.01 9 11.01"/>
-                </svg>
-                <span>Validar</span>
-            </button>
             <button class="nav-item action-btn" id="saveStateBtn">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
@@ -132,7 +125,7 @@
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M3 15v4c0 1.1.9 2 2 2h14a2 2 0 0 0 2-2v-4M17 8l-5-5-5 5M12 3v12"/>
                 </svg>
-                <span>Cargar</span>
+                <span>Datos</span>
             </button>
             <button class="nav-item action-btn" id="exportBtn" disabled>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -180,6 +173,15 @@
                     <span class="stat-value" id="coverageStat">0</span>
                     <span class="stat-label">Cobertura</span>
                 </div>
+            </div>
+            
+            <div class="sidebar-links">
+                <a href="tracking.html" class="tracking-link" title="Ir a Flex Crew Tracking">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M3 3v18h18"/><polyline points="18,17 12,11 8,15 3,10"/>
+                    </svg>
+                    <span>Tracking</span>
+                </a>
             </div>
         </div>
     </nav>
@@ -373,6 +375,9 @@
                             <span>📥</span> Cargar Archivo
                         </label>
                         <input type="file" id="importSharePointFile" accept=".json" hidden>
+                        <button class="btn-sharepoint danger" id="clearCacheBtn" title="Limpiar datos guardados localmente">
+                            <span>🗑️</span> Limpiar Cache
+                        </button>
                     </div>
                     <div class="sharepoint-info">
                         <small>💡 Guarda el archivo en tu carpeta de SharePoint y compártelo con tu equipo. 
@@ -396,6 +401,9 @@
                         <input type="text" id="pilotSearch" placeholder="Buscar piloto...">
                     </div>
                     <div class="filter-group">
+                        <select id="pilotsMonthFilter" class="filter-select" title="Filtrar por mes">
+                            <option value="">Todos los meses</option>
+                        </select>
                         <select id="baseFilter" class="filter-select"><option value="">Todas las bases</option></select>
                         <select id="roleFilter" class="filter-select">
                             <option value="">Todos los roles</option>
@@ -417,6 +425,9 @@
                         <input type="text" id="rotationSearch" placeholder="Buscar rotación...">
                     </div>
                     <div class="filter-group">
+                        <select id="rotationsMonthFilter" class="filter-select" title="Filtrar por mes">
+                            <option value="">Todos los meses</option>
+                        </select>
                         <select id="rotationRoleFilter" class="filter-select">
                             <option value="">Todos los roles</option>
                             <option value="CAP">CAP</option>
@@ -508,6 +519,16 @@
                                     </label>
                                     <span class="tz-label">UTC</span>
                                 </div>
+                            </div>
+                            <div class="toolbar-center">
+                                <label class="badge-toggle" title="Mostrar días consecutivos">
+                                    <input type="checkbox" id="showConsecutiveToggle" checked>
+                                    <span>📊 Días</span>
+                                </label>
+                                <label class="badge-toggle" title="Mostrar días fuera de base">
+                                    <input type="checkbox" id="showDFBToggle" checked>
+                                    <span>🏠 DFB</span>
+                                </label>
                             </div>
                             <div class="toolbar-right">
                                 <button class="btn-verify" id="verifyAllBtn" title="Verificar todos los pilotos">
@@ -720,6 +741,44 @@
                     <h4>Habilitaciones</h4>
                     <div class="tails-list" id="modalTails"></div>
                 </div>
+                <div class="restrictions-section">
+                    <div class="restrictions-header">
+                        <h4>Restricciones</h4>
+                        <button class="btn-small" id="editRestrictionsBtn">✏️ Editar</button>
+                    </div>
+                    <div class="restrictions-grid" id="restrictionsDisplay">
+                        <div class="restriction-item">
+                            <span class="restriction-label">🚫 No volar con:</span>
+                            <span class="restriction-value" id="modalDoNotFlyWith">—</span>
+                        </div>
+                        <div class="restriction-item">
+                            <span class="restriction-label">⚠️ Aeropuertos limitados:</span>
+                            <span class="restriction-value" id="modalLimitedAirports">—</span>
+                        </div>
+                        <div class="restriction-item">
+                            <span class="restriction-label">✈️ Aeronaves restringidas:</span>
+                            <span class="restriction-value" id="modalRestrictedAircraft">—</span>
+                        </div>
+                    </div>
+                    <div class="restrictions-edit" id="restrictionsEdit" style="display:none;">
+                        <div class="restriction-edit-item">
+                            <label>🚫 No volar con (IDs separados por coma):</label>
+                            <input type="text" id="editDoNotFlyWith" placeholder="P001, P002">
+                        </div>
+                        <div class="restriction-edit-item">
+                            <label>⚠️ Aeropuertos limitados (códigos separados por coma):</label>
+                            <input type="text" id="editLimitedAirports" placeholder="MDE, BOG">
+                        </div>
+                        <div class="restriction-edit-item">
+                            <label>✈️ Aeronaves restringidas (matrículas separadas por coma):</label>
+                            <input type="text" id="editRestrictedAircraft" placeholder="N331QT, N332QT">
+                        </div>
+                        <div class="restriction-edit-actions">
+                            <button class="btn-secondary" id="cancelRestrictionsBtn">Cancelar</button>
+                            <button class="btn-primary" id="saveRestrictionsBtn">Guardar</button>
+                        </div>
+                    </div>
+                </div>
                 <div class="pilot-stats-section">
                     <div class="pilot-stats-grid">
                         <div class="pilot-stat-card">
@@ -751,9 +810,15 @@
                             <button class="btn-action" id="verifyPilotBtn" title="Verificar continuidad y límites">
                                 <span>🔍</span> Verificar
                             </button>
-                            <button class="btn-action" id="exportPilotRosterBtn" title="Exportar roster de este piloto">
-                                <span>📄</span> Exportar
-                            </button>
+                            <div class="export-dropdown">
+                                <button class="btn-action" id="exportPilotRosterBtn" title="Exportar roster de este piloto">
+                                    <span>📄</span> Exportar ▾
+                                </button>
+                                <div class="export-menu" id="exportMenu">
+                                    <button id="exportRosterLocal">📄 Roster UTC-5</button>
+                                    <button id="exportRosterUTC">📄 Roster UTC</button>
+                                </div>
+                            </div>
                             <button class="btn-action danger" id="clearPilotAssignments" title="Eliminar todas las asignaciones">
                                 <span>🗑️</span> Limpiar
                             </button>

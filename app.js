@@ -4,6 +4,179 @@
  */
 
 // ============================================
+// AUTO-SAVE SYSTEM (LocalStorage)
+// ============================================
+const AutoSave = {
+    STORAGE_KEY: 'flexcrew-autosave',
+    SAVE_INTERVAL: 30000, // 30 seconds
+    intervalId: null,
+    
+    init() {
+        // Try to restore on init
+        this.restore();
+        
+        // Set up periodic auto-save
+        this.intervalId = setInterval(() => this.save(), this.SAVE_INTERVAL);
+        
+        // Save on page unload
+        window.addEventListener('beforeunload', () => this.save());
+        
+        console.log('AutoSave initialized - saving every 30s');
+    },
+    
+    save() {
+        try {
+            const data = {
+                timestamp: Date.now(),
+                currentPeriod: AppState.currentPeriod,
+                activeMonth: AppState.activeMonth,
+                pilots: AppState.pilots.map(p => ({
+                    ...p,
+                    freeDays: Array.from(p.freeDays || []),
+                    absences: Array.from(p.absences || []),
+                    training: Array.from(p.training || [])
+                })),
+                rotations: AppState.rotations,
+                slots: AppState.slots,
+                assignments: this.serializeAssignments(AppState.assignments),
+                loadedMonths: this.serializeLoadedMonths(AppState.loadedMonths),
+                holidays: Array.from(AppState.holidays.entries())
+            };
+            
+            localStorage.setItem(this.STORAGE_KEY, JSON.stringify(data));
+            console.log('AutoSave: State saved at', new Date().toLocaleTimeString());
+        } catch (e) {
+            console.error('AutoSave error:', e);
+        }
+    },
+    
+    restore() {
+        try {
+            const saved = localStorage.getItem(this.STORAGE_KEY);
+            if (!saved) return false;
+            
+            const data = JSON.parse(saved);
+            
+            // Check if data is recent (less than 24 hours old)
+            const age = Date.now() - data.timestamp;
+            if (age > 24 * 60 * 60 * 1000) {
+                console.log('AutoSave: Data too old, discarding');
+                localStorage.removeItem(this.STORAGE_KEY);
+                return false;
+            }
+            
+            // Restore state
+            if (data.currentPeriod) AppState.currentPeriod = data.currentPeriod;
+            if (data.activeMonth) AppState.activeMonth = data.activeMonth;
+            
+            if (data.pilots && data.pilots.length > 0) {
+                AppState.pilots = data.pilots.map(p => ({
+                    ...p,
+                    freeDays: new Set(p.freeDays || []),
+                    absences: new Set(p.absences || []),
+                    training: new Set(p.training || [])
+                }));
+            }
+            
+            if (data.rotations) AppState.rotations = data.rotations;
+            if (data.slots) AppState.slots = data.slots;
+            
+            if (data.assignments) {
+                AppState.assignments = this.deserializeAssignments(data.assignments);
+            }
+            
+            if (data.loadedMonths) {
+                AppState.loadedMonths = this.deserializeLoadedMonths(data.loadedMonths);
+            }
+            
+            if (data.holidays) {
+                AppState.holidays = new Map(data.holidays);
+            }
+            
+            console.log('AutoSave: State restored from', new Date(data.timestamp).toLocaleString());
+            return true;
+        } catch (e) {
+            console.error('AutoSave restore error:', e);
+            return false;
+        }
+    },
+    
+    serializeAssignments(assignments) {
+        const obj = {};
+        assignments.forEach((value, key) => {
+            obj[key] = value.map(a => ({
+                ...a,
+                startTime: a.startTime ? new Date(a.startTime).toISOString() : null,
+                endTime: a.endTime ? new Date(a.endTime).toISOString() : null
+            }));
+        });
+        return obj;
+    },
+    
+    deserializeAssignments(obj) {
+        const map = new Map();
+        Object.entries(obj).forEach(([key, value]) => {
+            map.set(key, value.map(a => ({
+                ...a,
+                startTime: a.startTime ? new Date(a.startTime) : null,
+                endTime: a.endTime ? new Date(a.endTime) : null
+            })));
+        });
+        return map;
+    },
+    
+    serializeLoadedMonths(loadedMonths) {
+        const obj = {};
+        loadedMonths.forEach((value, key) => {
+            obj[key] = {
+                ...value,
+                pilots: value.pilots?.map(p => ({
+                    ...p,
+                    freeDays: Array.from(p.freeDays || []),
+                    absences: Array.from(p.absences || []),
+                    training: Array.from(p.training || [])
+                })),
+                assignments: this.serializeAssignments(value.assignments || new Map())
+            };
+        });
+        return obj;
+    },
+    
+    deserializeLoadedMonths(obj) {
+        const map = new Map();
+        Object.entries(obj).forEach(([key, value]) => {
+            map.set(key, {
+                ...value,
+                pilots: value.pilots?.map(p => ({
+                    ...p,
+                    freeDays: new Set(p.freeDays || []),
+                    absences: new Set(p.absences || []),
+                    training: new Set(p.training || [])
+                })),
+                assignments: this.deserializeAssignments(value.assignments || {})
+            });
+        });
+        return map;
+    },
+    
+    clear() {
+        localStorage.removeItem(this.STORAGE_KEY);
+        console.log('AutoSave: Data cleared');
+    },
+    
+    getLastSaveTime() {
+        try {
+            const saved = localStorage.getItem(this.STORAGE_KEY);
+            if (!saved) return null;
+            const data = JSON.parse(saved);
+            return new Date(data.timestamp);
+        } catch (e) {
+            return null;
+        }
+    }
+};
+
+// ============================================
 // AUTHENTICATION & USERS
 // ============================================
 const Auth = {
@@ -206,7 +379,8 @@ const CONFIG = {
     NEXT_DAY_START_HOUR: 1.5, // 1:30 AM
     MAX_DH_DAYS_BEFORE: 3,
     ZOOM: { min: 0.3, max: 3.0, step: 0.2, default: 1.0 },
-    STORAGE_KEY: 'flex_crew_scheduler_v4'
+    STORAGE_KEY: 'flex_crew_roster_v5',
+    DATA_FILE: 'FlexCrewRoster_Data.json' // Shared data file
 };
 
 // ============================================
@@ -220,8 +394,8 @@ const AppState = {
     slots: [],
     assignments: new Map(),
     
-    // Multi-month management
-    loadedMonths: new Map(), // { "2026-01": { flights: [], pilots: [], rotations: [], slots: [], assignments: Map } }
+    // Multi-month management - each month is INDEPENDENT
+    loadedMonths: new Map(), // { "2026-01": { flights, pilots, rotations, slots, assignments, settings } }
     activeMonth: null, // "2026-01" format
     
     // Selection state for rotations
@@ -243,12 +417,17 @@ const AppState = {
     // Time zone settings
     showUTC: false, // false = UTC-5, true = UTC
     
+    // Calendar display options
+    showConsecutiveBadge: true,
+    showDFBBadge: true,
+    
     filters: {
         base: '', role: '', assignment: '',
-        calendarRole: '', calendarBase: '',
+        calendarRole: '', calendarBase: '', calendarPilotSearch: '',
         unassignedRole: '', unassignedSort: 'date',
         ganttRole: '', ganttBase: '',
-        tailFilter: ''
+        tailFilter: '',
+        rotationsTail: '', rotationsOrigin: '', rotationsDate: '', rotationsMonth: ''
     },
     
     draggedSlot: null,
@@ -471,7 +650,14 @@ const DataLoader = {
                         freeDays: DataLoader.parseDateList(row['Free_Days']),
                         absences: DataLoader.parseDateList(row['Absences']),
                         training: DataLoader.parseDateList(row['Training']),
-                        seniority: parseInt(row['Seniority']) || 9999
+                        age: parseInt(row['Age']) || 0,
+                        seniority: parseInt(row['Seniority']) || 9999,
+                        // NEW FIELDS for restrictions
+                        doNotFlyWith: (row['Do_Not_Fly_With'] || '').toString().split(',').map(t => t.trim()).filter(t => t),
+                        limitedAirports: (row['Limited_Airports'] || '').toString().split(',').map(t => t.trim().toUpperCase()).filter(t => t),
+                        // Additional restrictions (editable in UI)
+                        crp: row['CRP'] || '',
+                        restrictedStations: []
                     })).filter(p => p.id && p.name);
                     
                     pilots.forEach(pilot => {
@@ -480,6 +666,7 @@ const DataLoader = {
                         pilot.awayStartDate = null;
                         pilot.ftByMonth = {};
                         pilot.ftByFortnight = {};
+                        pilot.stByMonth = {}; // Track Service Time
                     });
                     
                     // Detect month from free days/absences/training dates
@@ -502,7 +689,12 @@ const DataLoader = {
                     }
                     
                     // Save to pilotDBsByMonth
-                    AppState.pilotDBsByMonth[detectedMonth] = JSON.parse(JSON.stringify(pilots));
+                    AppState.pilotDBsByMonth[detectedMonth] = JSON.parse(JSON.stringify(pilots.map(p => ({
+                        ...p,
+                        freeDays: [...p.freeDays],
+                        absences: [...p.absences],
+                        training: [...p.training]
+                    }))));
                     
                     // Set as current pilots
                     AppState.pilots = pilots;
@@ -511,7 +703,10 @@ const DataLoader = {
                     DataLoader.createPreloadedEvents(pilots);
                     
                     resolve({ pilots, month: detectedMonth });
-                } catch (error) { reject(error); }
+                } catch (error) { 
+                    console.error('Error loading pilots:', error);
+                    reject(error); 
+                }
             };
             reader.onerror = reject;
             reader.readAsArrayBuffer(file);
@@ -519,66 +714,60 @@ const DataLoader = {
     },
     
     createPreloadedEvents(pilots) {
+        // Limit processing to avoid browser crash
+        const MAX_EVENTS_PER_PILOT = 50;
+        
         pilots.forEach(pilot => {
-            const assignments = AppState.assignments.get(pilot.id) || [];
-            
-            // Add FREE days
-            if (pilot.freeDays && pilot.freeDays.size > 0) {
-                pilot.freeDays.forEach(dateStr => {
-                    const [year, month, day] = dateStr.split('-').map(Number);
-                    const startDate = new Date(year, month - 1, day, 0, 0, 0, 0);
-                    const endDate = new Date(year, month - 1, day, 23, 59, 59, 999);
+            try {
+                const assignments = AppState.assignments.get(pilot.id) || [];
+                let eventCount = 0;
+                
+                // Helper to safely iterate Sets/Arrays
+                const processDateSet = (dateSet, type, notes) => {
+                    if (!dateSet || eventCount >= MAX_EVENTS_PER_PILOT) return;
                     
-                    assignments.push({
-                        type: 'FREE',
-                        id: Utils.generateId('FREE-'),
-                        startTime: startDate,
-                        endTime: endDate,
-                        preloaded: true, // Mark as preloaded (from DB)
-                        notes: 'Día libre pre-cargado'
-                    });
-                });
-            }
-            
-            // Add OFF (Absences)
-            if (pilot.absences && pilot.absences.size > 0) {
-                pilot.absences.forEach(dateStr => {
-                    const [year, month, day] = dateStr.split('-').map(Number);
-                    const startDate = new Date(year, month - 1, day, 0, 0, 0, 0);
-                    const endDate = new Date(year, month - 1, day, 23, 59, 59, 999);
+                    const dates = dateSet instanceof Set ? [...dateSet] : 
+                                  Array.isArray(dateSet) ? dateSet : [];
                     
-                    assignments.push({
-                        type: 'OFF',
-                        id: Utils.generateId('OFF-'),
-                        startTime: startDate,
-                        endTime: endDate,
-                        preloaded: true,
-                        notes: 'Ausencia pre-cargada'
-                    });
-                });
+                    for (const dateStr of dates) {
+                        if (eventCount >= MAX_EVENTS_PER_PILOT) break;
+                        if (!dateStr || typeof dateStr !== 'string') continue;
+                        
+                        const parts = dateStr.split('-').map(Number);
+                        if (parts.length !== 3 || parts.some(isNaN)) continue;
+                        
+                        const [year, month, day] = parts;
+                        if (year < 2020 || year > 2030) continue; // Sanity check
+                        
+                        const startDate = new Date(year, month - 1, day, 0, 0, 0, 0);
+                        if (isNaN(startDate.getTime())) continue;
+                        
+                        const endDate = new Date(year, month - 1, day, 23, 59, 59, 999);
+                        
+                        assignments.push({
+                            type,
+                            id: Utils.generateId(type + '-'),
+                            startTime: startDate,
+                            endTime: endDate,
+                            preloaded: true,
+                            stHours: type === 'TRN' ? 7 : 0,
+                            notes
+                        });
+                        eventCount++;
+                    }
+                };
+                
+                processDateSet(pilot.freeDays, 'FREE', 'Día libre pre-cargado');
+                processDateSet(pilot.absences, 'OFF', 'Ausencia pre-cargada');
+                processDateSet(pilot.training, 'TRN', 'Entrenamiento pre-cargado');
+                
+                // Sort and save
+                assignments.sort((a, b) => new Date(a.startTime) - new Date(b.startTime));
+                AppState.assignments.set(pilot.id, assignments);
+                
+            } catch (e) {
+                console.warn(`Error processing pilot ${pilot.id}:`, e);
             }
-            
-            // Add TRN (Training)
-            if (pilot.training && pilot.training.size > 0) {
-                pilot.training.forEach(dateStr => {
-                    const [year, month, day] = dateStr.split('-').map(Number);
-                    const startDate = new Date(year, month - 1, day, 0, 0, 0, 0);
-                    const endDate = new Date(year, month - 1, day, 23, 59, 59, 999);
-                    
-                    assignments.push({
-                        type: 'TRN',
-                        id: Utils.generateId('TRN-'),
-                        startTime: startDate,
-                        endTime: endDate,
-                        preloaded: true,
-                        notes: 'Entrenamiento pre-cargado'
-                    });
-                });
-            }
-            
-            // Sort by date and save
-            assignments.sort((a, b) => new Date(a.startTime) - new Date(b.startTime));
-            AppState.assignments.set(pilot.id, assignments);
         });
     },
     
@@ -2106,7 +2295,7 @@ const ExportManager = {
         XLSX.writeFile(wb, `Schedule_${year}_${String(month).padStart(2, '0')}.xlsx`);
     },
     
-    exportPilotRoster(pilotId) {
+    exportPilotRoster(pilotId, useUTC = false) {
         const pilot = AppState.pilots.find(p => p.id === pilotId);
         if (!pilot) return;
         
@@ -2115,11 +2304,13 @@ const ExportManager = {
         const daysInMonth = Utils.getDaysInMonth(year, month);
         const monthNames = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
         const dayNames = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+        const operationalTypes = new Set(['ROT', 'DH', 'TRN', 'OFI']);
         
-        // Calculate totals
+        // Calculate totals - include DH and TRN in ST
         let totalST = 0;
         let totalFT = 0;
-        let totalDH = 0;
+        let totalDH_ST = 0; // DH Service Time
+        let totalTRN_ST = 0; // Training Service Time
         let freeDays = 0;
         let rotationCount = 0;
         let dhCount = 0;
@@ -2130,35 +2321,80 @@ const ExportManager = {
                 totalFT += a.ftHours || 0;
                 rotationCount++;
             } else if (a.type === 'DH') {
-                totalDH += a.dutyHours || a.stHours || 0;
+                totalDH_ST += a.dutyHours || a.stHours || 0;
                 dhCount++;
+            } else if (a.type === 'TRN') {
+                totalTRN_ST += a.stHours || 7; // Default 7h for training
             }
             if (a.type === 'FREE' || a.type === 'OFF' || a.type === 'L') freeDays++;
         });
         
+        // Total ST includes ROT, DH and TRN
+        const grandTotalST = totalST + totalDH_ST + totalTRN_ST;
+        
+        // Create map of assignments by day
+        const assignmentsByDay = new Map();
+        assignments.forEach(a => {
+            const start = new Date(a.startTime);
+            const dayKey = `${start.getFullYear()}-${start.getMonth() + 1}-${start.getDate()}`;
+            if (!assignmentsByDay.has(dayKey)) assignmentsByDay.set(dayKey, []);
+            assignmentsByDay.get(dayKey).push(a);
+        });
+        
+        // Track pilot location day by day
+        let currentLocation = pilot.base;
+        const locationByDay = new Map();
+        
+        for (let d = 1; d <= daysInMonth; d++) {
+            const dayKey = `${year}-${month}-${d}`;
+            const dayAssignments = assignmentsByDay.get(dayKey) || [];
+            
+            // Update location based on assignments
+            dayAssignments.forEach(a => {
+                if (operationalTypes.has(a.type) && a.destination) {
+                    currentLocation = a.destination;
+                }
+                if (['OFF', 'FREE', 'VAC', 'L'].includes(a.type)) {
+                    currentLocation = pilot.base;
+                }
+            });
+            
+            locationByDay.set(d, currentLocation);
+        }
+        
         const rosterData = [];
+        const tzLabel = useUTC ? 'UTC' : 'UTC-5';
         
         // Header - Pilot Info
-        rosterData.push({ 'A': 'FLEX CREW - PROGRAMACIÓN MENSUAL' });
+        rosterData.push({ 'A': 'FLEX CREW ROSTER - PROGRAMACIÓN MENSUAL' });
+        rosterData.push({ 'A': `Zona horaria: ${tzLabel}` });
         rosterData.push({});
         rosterData.push({ 'A': 'PILOTO', 'B': pilot.name });
         rosterData.push({ 'A': 'ID', 'B': pilot.id, 'C': 'BASE', 'D': pilot.base, 'E': 'RANGO', 'F': pilot.role });
         rosterData.push({ 'A': 'PERIODO', 'B': `${monthNames[month - 1]} ${year}` });
         rosterData.push({});
         
-        // Totals Summary - Like the pilot modal
+        // Totals Summary
         rosterData.push({ 'A': '═════════════════ RESUMEN ═════════════════' });
         rosterData.push({ 'A': 'Flight Time (FT)', 'B': `${totalFT.toFixed(2)} hrs`, 'C': 'Rotaciones', 'D': rotationCount });
-        rosterData.push({ 'A': 'Service Time (ST)', 'B': `${totalST.toFixed(2)} hrs`, 'C': 'Dead Heads', 'D': dhCount });
-        rosterData.push({ 'A': 'DH Time', 'B': `${totalDH.toFixed(2)} hrs`, 'C': 'Días Libres', 'D': freeDays });
+        rosterData.push({ 'A': 'Service Time ROT', 'B': `${totalST.toFixed(2)} hrs`, 'C': 'Dead Heads', 'D': dhCount });
+        rosterData.push({ 'A': 'Service Time DH', 'B': `${totalDH_ST.toFixed(2)} hrs`, 'C': 'Días Libres', 'D': freeDays });
+        rosterData.push({ 'A': 'Service Time TRN', 'B': `${totalTRN_ST.toFixed(2)} hrs` });
+        rosterData.push({ 'A': 'TOTAL SERVICE TIME', 'B': `${grandTotalST.toFixed(2)} hrs` });
         rosterData.push({});
         
         // Qualifications
         rosterData.push({ 'A': 'HABILITACIONES', 'B': pilot.qualifiedTails?.join(', ') || 'N/A' });
+        if (pilot.doNotFlyWith?.length) {
+            rosterData.push({ 'A': 'NO VOLAR CON', 'B': pilot.doNotFlyWith.join(', ') });
+        }
+        if (pilot.limitedAirports?.length) {
+            rosterData.push({ 'A': 'AEROPUERTOS RESTRINGIDOS', 'B': pilot.limitedAirports.join(', ') });
+        }
         rosterData.push({});
         
-        // Assignments table
-        rosterData.push({ 'A': '═════════════════ ASIGNACIONES ═════════════════' });
+        // Assignments table - ALL days of month
+        rosterData.push({ 'A': '═════════════════ PROGRAMACIÓN DIARIA ═════════════════' });
         rosterData.push({
             'A': 'Fecha',
             'B': 'Tipo',
@@ -2167,69 +2403,97 @@ const ExportManager = {
             'E': 'Salida',
             'F': 'Llegada',
             'G': 'FT',
-            'H': 'ST/Duty'
+            'H': 'ST',
+            'I': 'Ubicación'
         });
         
-        // Sort assignments by date
-        const sortedAssignments = [...assignments].sort((a, b) => new Date(a.startTime) - new Date(b.startTime));
-        
-        sortedAssignments.forEach(a => {
-            const start = new Date(a.startTime);
-            const end = new Date(a.endTime);
-            const dayName = dayNames[start.getDay()];
-            const dateStr = `${dayName} ${start.getDate()}/${month}`;
+        // Iterate ALL days of the month
+        for (let d = 1; d <= daysInMonth; d++) {
+            const date = new Date(year, month - 1, d);
+            const dayName = dayNames[date.getDay()];
+            const dateStr = `${dayName} ${d}/${month}`;
+            const dayKey = `${year}-${month}-${d}`;
+            const dayAssignments = assignmentsByDay.get(dayKey) || [];
+            const location = locationByDay.get(d);
             
-            let tipo = a.type;
-            let ruta = '';
-            let equipo = '';
-            let salida = '';
-            let llegada = '';
-            let ft = '';
-            let st = '';
-            
-            if (a.type === 'ROT') {
-                tipo = a.role || 'ROT';
-                ruta = a.route || `${a.origin}-${a.destination}`;
-                equipo = a.tail || '';
-                salida = Utils.formatDate(start, 'time', false);
-                llegada = Utils.formatDate(end, 'time', false);
-                ft = (a.ftHours || 0).toFixed(2);
-                st = (a.stHours || 0).toFixed(2);
-            } else if (a.type === 'DH') {
-                tipo = 'DH';
-                ruta = `${a.origin}→${a.destination}`;
-                salida = Utils.formatDate(start, 'time', false);
-                llegada = Utils.formatDate(end, 'time', false);
-                ft = (a.ftHours || 0).toFixed(2);
-                st = (a.dutyHours || a.stHours || 0).toFixed(2);
-            } else if (a.type === 'FREE' || a.type === 'OFF' || a.type === 'L') {
-                tipo = 'LIBRE';
-                ruta = a.type;
-            } else if (a.type === 'VAC') {
-                tipo = 'VAC';
-                ruta = 'Vacaciones';
-            } else if (a.type === 'TRN') {
-                tipo = 'ENTRENO';
-                ruta = 'Entrenamiento';
-                st = '7.00';
+            if (dayAssignments.length === 0) {
+                // No assignment - show AVL (Available) with location
+                rosterData.push({
+                    'A': dateStr,
+                    'B': 'AVL',
+                    'C': '',
+                    'D': '',
+                    'E': '',
+                    'F': '',
+                    'G': '',
+                    'H': '',
+                    'I': location
+                });
+            } else {
+                // Has assignments
+                dayAssignments.sort((a, b) => new Date(a.startTime) - new Date(b.startTime));
+                
+                dayAssignments.forEach((a, idx) => {
+                    const start = new Date(a.startTime);
+                    const end = new Date(a.endTime);
+                    
+                    let tipo = a.type;
+                    let ruta = '';
+                    let equipo = '';
+                    let salida = '';
+                    let llegada = '';
+                    let ft = '';
+                    let st = '';
+                    
+                    if (a.type === 'ROT') {
+                        tipo = a.role || 'ROT';
+                        ruta = a.route || `${a.origin}-${a.destination}`;
+                        equipo = a.tail || '';
+                        salida = Utils.formatDate(start, 'time', useUTC);
+                        llegada = Utils.formatDate(end, 'time', useUTC);
+                        ft = (a.ftHours || 0).toFixed(2);
+                        st = (a.stHours || 0).toFixed(2);
+                    } else if (a.type === 'DH') {
+                        tipo = 'DH';
+                        ruta = `${a.origin}→${a.destination}`;
+                        salida = Utils.formatDate(start, 'time', useUTC);
+                        llegada = Utils.formatDate(end, 'time', useUTC);
+                        ft = (a.ftHours || 0).toFixed(2);
+                        st = (a.dutyHours || a.stHours || 0).toFixed(2);
+                    } else if (a.type === 'FREE' || a.type === 'OFF' || a.type === 'L') {
+                        tipo = 'LIBRE';
+                        ruta = a.type;
+                    } else if (a.type === 'VAC') {
+                        tipo = 'VAC';
+                        ruta = 'Vacaciones';
+                    } else if (a.type === 'TRN') {
+                        tipo = 'TRN';
+                        ruta = 'Entrenamiento';
+                        st = (a.stHours || 7).toFixed(2);
+                    } else if (a.type === 'LUS' || a.type === 'INC') {
+                        tipo = a.type;
+                        ruta = a.type === 'LUS' ? 'Licencia' : 'Incapacidad';
+                    }
+                    
+                    rosterData.push({
+                        'A': idx === 0 ? dateStr : '',
+                        'B': tipo,
+                        'C': ruta,
+                        'D': equipo,
+                        'E': salida,
+                        'F': llegada,
+                        'G': ft,
+                        'H': st,
+                        'I': idx === 0 ? location : ''
+                    });
+                });
             }
-            
-            rosterData.push({
-                'A': dateStr,
-                'B': tipo,
-                'C': ruta,
-                'D': equipo,
-                'E': salida,
-                'F': llegada,
-                'G': ft,
-                'H': st
-            });
-        });
+        }
         
-        // Empty days
+        // Totals row
         rosterData.push({});
         rosterData.push({ 'A': '─────────────────────────────────────────────────' });
-        rosterData.push({ 'A': 'TOTALES', 'G': totalFT.toFixed(2), 'H': totalST.toFixed(2) });
+        rosterData.push({ 'A': 'TOTALES', 'G': totalFT.toFixed(2), 'H': grandTotalST.toFixed(2) });
         
         const wb = XLSX.utils.book_new();
         const ws = XLSX.utils.json_to_sheet(rosterData, { skipHeader: true });
@@ -2238,25 +2502,28 @@ const ExportManager = {
         ws['!cols'] = [
             { wch: 12 }, // Fecha
             { wch: 8 },  // Tipo
-            { wch: 20 }, // Ruta
+            { wch: 22 }, // Ruta
             { wch: 10 }, // Equipo
             { wch: 8 },  // Salida
             { wch: 8 },  // Llegada
             { wch: 8 },  // FT
-            { wch: 8 }   // ST
+            { wch: 8 },  // ST
+            { wch: 6 }   // Ubicación
         ];
         
         XLSX.utils.book_append_sheet(wb, ws, 'Roster');
-        XLSX.writeFile(wb, `FlexCrew_${pilot.nick || pilot.id}_${monthNames[month-1]}_${year}.xlsx`);
+        XLSX.writeFile(wb, `FlexCrew_${pilot.nick || pilot.id}_${monthNames[month-1]}_${year}_${tzLabel}.xlsx`);
     },
     
-    // Export ALL pilot rosters in one file
-    exportAllRosters() {
+    // Export ALL pilot rosters in one file - SAME FORMAT as individual roster
+    exportAllRosters(useUTC = false) {
         const wb = XLSX.utils.book_new();
         const { year, month } = AppState.currentPeriod;
         const daysInMonth = Utils.getDaysInMonth(year, month);
         const monthNames = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
         const dayNames = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+        const operationalTypes = new Set(['ROT', 'DH', 'TRN', 'OFI']);
+        const tzLabel = useUTC ? 'UTC' : 'UTC-5';
         
         AppState.pilots.forEach(pilot => {
             const assignments = AppState.assignments.get(pilot.id) || [];
@@ -2264,80 +2531,135 @@ const ExportManager = {
             // Calculate totals
             let totalST = 0;
             let totalFT = 0;
-            let totalDH = 0;
+            let totalDH_ST = 0;
+            let totalTRN_ST = 0;
             let freeDays = 0;
+            let rotationCount = 0;
+            let dhCount = 0;
             
             assignments.forEach(a => {
                 if (a.type === 'ROT') {
                     totalST += a.stHours || 0;
                     totalFT += a.ftHours || 0;
+                    rotationCount++;
                 } else if (a.type === 'DH') {
-                    totalDH += a.dutyHours || a.stHours || 0;
+                    totalDH_ST += a.dutyHours || a.stHours || 0;
+                    dhCount++;
+                } else if (a.type === 'TRN') {
+                    totalTRN_ST += a.stHours || 7;
                 }
                 if (a.type === 'FREE' || a.type === 'OFF' || a.type === 'L') freeDays++;
             });
             
-            const rosterData = [];
+            const grandTotalST = totalST + totalDH_ST + totalTRN_ST;
             
-            // Header - Same format as individual export
-            rosterData.push({ 'A': pilot.name, 'B': pilot.id, 'C': pilot.base, 'D': pilot.role });
-            rosterData.push({ 'A': 'FT', 'B': totalFT.toFixed(2), 'C': 'ST', 'D': totalST.toFixed(2), 'E': 'DH', 'F': totalDH.toFixed(2), 'G': 'Libres', 'H': freeDays });
-            rosterData.push({});
-            rosterData.push({ 'A': 'Fecha', 'B': 'Tipo', 'C': 'Ruta', 'D': 'Equipo', 'E': 'Salida', 'F': 'Llegada', 'G': 'FT', 'H': 'ST' });
-            
-            const sortedAssignments = [...assignments].sort((a, b) => new Date(a.startTime) - new Date(b.startTime));
-            
-            sortedAssignments.forEach(a => {
+            // Create map of assignments by day
+            const assignmentsByDay = new Map();
+            assignments.forEach(a => {
                 const start = new Date(a.startTime);
-                const dayName = dayNames[start.getDay()];
-                const dateStr = `${dayName} ${start.getDate()}/${month}`;
-                
-                let tipo = a.type;
-                let ruta = '';
-                let equipo = '';
-                let salida = '';
-                let llegada = '';
-                let ft = '';
-                let st = '';
-                
-                if (a.type === 'ROT') {
-                    tipo = a.role || 'ROT';
-                    ruta = a.route || '';
-                    equipo = a.tail || '';
-                    salida = Utils.formatDate(start, 'time', false);
-                    llegada = Utils.formatDate(new Date(a.endTime), 'time', false);
-                    ft = (a.ftHours || 0).toFixed(2);
-                    st = (a.stHours || 0).toFixed(2);
-                } else if (a.type === 'DH') {
-                    tipo = 'DH';
-                    ruta = `${a.origin}→${a.destination}`;
-                    salida = Utils.formatDate(start, 'time', false);
-                    llegada = Utils.formatDate(new Date(a.endTime), 'time', false);
-                    ft = (a.ftHours || 0).toFixed(2);
-                    st = (a.dutyHours || 0).toFixed(2);
-                } else if (a.type === 'FREE' || a.type === 'OFF') {
-                    tipo = 'LIBRE';
-                } else {
-                    tipo = a.type;
-                }
-                
-                rosterData.push({
-                    'A': dateStr, 'B': tipo, 'C': ruta, 'D': equipo, 
-                    'E': salida, 'F': llegada, 'G': ft, 'H': st
-                });
+                const dayKey = `${start.getFullYear()}-${start.getMonth() + 1}-${start.getDate()}`;
+                if (!assignmentsByDay.has(dayKey)) assignmentsByDay.set(dayKey, []);
+                assignmentsByDay.get(dayKey).push(a);
             });
             
+            // Track pilot location
+            let currentLocation = pilot.base;
+            const locationByDay = new Map();
+            
+            for (let d = 1; d <= daysInMonth; d++) {
+                const dayKey = `${year}-${month}-${d}`;
+                const dayAssignments = assignmentsByDay.get(dayKey) || [];
+                dayAssignments.forEach(a => {
+                    if (operationalTypes.has(a.type) && a.destination) currentLocation = a.destination;
+                    if (['OFF', 'FREE', 'VAC', 'L'].includes(a.type)) currentLocation = pilot.base;
+                });
+                locationByDay.set(d, currentLocation);
+            }
+            
+            const rosterData = [];
+            
+            // Header
+            rosterData.push({ 'A': 'FLEX CREW ROSTER - PROGRAMACIÓN MENSUAL' });
+            rosterData.push({ 'A': `Zona horaria: ${tzLabel}` });
+            rosterData.push({});
+            rosterData.push({ 'A': 'PILOTO', 'B': pilot.name });
+            rosterData.push({ 'A': 'ID', 'B': pilot.id, 'C': 'BASE', 'D': pilot.base, 'E': 'RANGO', 'F': pilot.role });
+            rosterData.push({ 'A': 'PERIODO', 'B': `${monthNames[month - 1]} ${year}` });
+            rosterData.push({});
+            
+            // Summary
+            rosterData.push({ 'A': '═════════════════ RESUMEN ═════════════════' });
+            rosterData.push({ 'A': 'Flight Time (FT)', 'B': `${totalFT.toFixed(2)} hrs`, 'C': 'Rotaciones', 'D': rotationCount });
+            rosterData.push({ 'A': 'Service Time ROT', 'B': `${totalST.toFixed(2)} hrs`, 'C': 'Dead Heads', 'D': dhCount });
+            rosterData.push({ 'A': 'Service Time DH', 'B': `${totalDH_ST.toFixed(2)} hrs`, 'C': 'Días Libres', 'D': freeDays });
+            rosterData.push({ 'A': 'TOTAL SERVICE TIME', 'B': `${grandTotalST.toFixed(2)} hrs` });
+            rosterData.push({});
+            
+            // Qualifications
+            rosterData.push({ 'A': 'HABILITACIONES', 'B': pilot.qualifiedTails?.join(', ') || 'N/A' });
+            if (pilot.doNotFlyWith?.length) rosterData.push({ 'A': 'NO VOLAR CON', 'B': pilot.doNotFlyWith.join(', ') });
+            if (pilot.limitedAirports?.length) rosterData.push({ 'A': 'AEROPUERTOS RESTRINGIDOS', 'B': pilot.limitedAirports.join(', ') });
+            rosterData.push({});
+            
+            // Schedule
+            rosterData.push({ 'A': '═════════════════ PROGRAMACIÓN DIARIA ═════════════════' });
+            rosterData.push({ 'A': 'Fecha', 'B': 'Tipo', 'C': 'Ruta', 'D': 'Equipo', 'E': 'Salida', 'F': 'Llegada', 'G': 'FT', 'H': 'ST', 'I': 'Ubic' });
+            
+            for (let d = 1; d <= daysInMonth; d++) {
+                const date = new Date(year, month - 1, d);
+                const dayName = dayNames[date.getDay()];
+                const dateStr = `${dayName} ${d}/${month}`;
+                const dayKey = `${year}-${month}-${d}`;
+                const dayAssignments = assignmentsByDay.get(dayKey) || [];
+                const location = locationByDay.get(d);
+                
+                if (dayAssignments.length === 0) {
+                    rosterData.push({ 'A': dateStr, 'B': 'AVL', 'I': location });
+                } else {
+                    dayAssignments.sort((a, b) => new Date(a.startTime) - new Date(b.startTime));
+                    dayAssignments.forEach((a, idx) => {
+                        const start = new Date(a.startTime);
+                        const end = new Date(a.endTime);
+                        
+                        let tipo = a.type, ruta = '', equipo = '', salida = '', llegada = '', ft = '', st = '';
+                        
+                        if (a.type === 'ROT') {
+                            tipo = a.role || 'ROT'; ruta = a.route || `${a.origin}-${a.destination}`; equipo = a.tail || '';
+                            salida = Utils.formatDate(start, 'time', useUTC); llegada = Utils.formatDate(end, 'time', useUTC);
+                            ft = (a.ftHours || 0).toFixed(2); st = (a.stHours || 0).toFixed(2);
+                        } else if (a.type === 'DH') {
+                            tipo = 'DH'; ruta = `${a.origin}→${a.destination}`;
+                            salida = Utils.formatDate(start, 'time', useUTC); llegada = Utils.formatDate(end, 'time', useUTC);
+                            ft = (a.ftHours || 0).toFixed(2); st = (a.dutyHours || 0).toFixed(2);
+                        } else if (['FREE', 'OFF', 'L'].includes(a.type)) {
+                            tipo = 'LIBRE'; ruta = a.type;
+                        } else if (a.type === 'VAC') {
+                            tipo = 'VAC'; ruta = 'Vacaciones';
+                        } else if (a.type === 'TRN') {
+                            tipo = 'TRN'; ruta = 'Entrenamiento'; st = (a.stHours || 7).toFixed(2);
+                        } else {
+                            tipo = a.type;
+                        }
+                        
+                        rosterData.push({
+                            'A': idx === 0 ? dateStr : '', 'B': tipo, 'C': ruta, 'D': equipo,
+                            'E': salida, 'F': llegada, 'G': ft, 'H': st, 'I': idx === 0 ? location : ''
+                        });
+                    });
+                }
+            }
+            
+            rosterData.push({});
+            rosterData.push({ 'A': 'TOTALES', 'G': totalFT.toFixed(2), 'H': grandTotalST.toFixed(2) });
+            
             const ws = XLSX.utils.json_to_sheet(rosterData, { skipHeader: true });
-            ws['!cols'] = [
-                { wch: 10 }, { wch: 8 }, { wch: 18 }, { wch: 10 },
-                { wch: 7 }, { wch: 7 }, { wch: 7 }, { wch: 7 }
-            ];
+            ws['!cols'] = [{ wch: 12 }, { wch: 8 }, { wch: 22 }, { wch: 10 }, { wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 6 }];
             
             const sheetName = (pilot.nick || pilot.id).substring(0, 31);
             XLSX.utils.book_append_sheet(wb, ws, sheetName);
         });
         
-        XLSX.writeFile(wb, `FlexCrew_AllRosters_${year}_${String(month).padStart(2, '0')}.xlsx`);
+        XLSX.writeFile(wb, `FlexCrew_AllRosters_${year}_${String(month).padStart(2, '0')}_${tzLabel}.xlsx`);
     }
 };
 
@@ -2360,7 +2682,230 @@ const UIController = {
         this.bindConfig();
         this.loadSavedStates();
         this.renderBasesList();
+        this.renderMonthTabs();
         this.updateView('upload');
+        
+        // Auto-save disabled for debugging
+        // setTimeout(() => this.tryAutoLoadData(), 500);
+        // setInterval(() => this.autoSaveData(), 5 * 60 * 1000);
+        // window.addEventListener('beforeunload', () => this.autoSaveData());
+    },
+    
+    tryAutoLoadData() {
+        // Try to load from localStorage - do it silently without blocking
+        setTimeout(() => {
+            try {
+                const savedData = localStorage.getItem(CONFIG.STORAGE_KEY + '_autosave');
+                if (savedData) {
+                    const data = JSON.parse(savedData);
+                    const hasData = (data.loadedMonths && Object.keys(data.loadedMonths).length > 0) || 
+                                   (data.rotations && data.rotations.length > 0) ||
+                                   (data.pilots && data.pilots.length > 0);
+                    
+                    if (hasData && confirm('Se encontró una sesión guardada. ¿Desea restaurarla?')) {
+                        this.restoreAutoSave(data);
+                        Toast.show('success', 'Restaurado', 'Sesión anterior restaurada');
+                    }
+                }
+            } catch (e) {
+                console.warn('Error loading autosave:', e);
+            }
+        }, 500);
+    },
+    
+    restoreAutoSave(data) {
+        try {
+            AppState.currentPeriod = data.currentPeriod || { year: 2026, month: 1 };
+            AppState.activeMonth = data.activeMonth || null;
+            AppState.itinerary = data.itinerary || [];
+            
+            AppState.pilots = (data.pilots || []).map(p => ({
+                ...p,
+                freeDays: new Set(p.freeDays || []),
+                absences: new Set(p.absences || []),
+                training: new Set(p.training || []),
+                ftByMonth: p.ftByMonth || {},
+                ftByFortnight: p.ftByFortnight || {},
+                stByMonth: p.stByMonth || {}
+            }));
+            
+            AppState.rotations = (data.rotations || []).map(r => ({
+                ...r,
+                startTime: r.startTime ? new Date(r.startTime) : null,
+                endTime: r.endTime ? new Date(r.endTime) : null
+            }));
+            
+            AppState.slots = (data.slots || []).map(s => {
+                const rotation = AppState.rotations.find(r => r.id === s.rotationId);
+                return { ...s, rotation };
+            });
+            
+            AppState.assignments.clear();
+            Object.entries(data.assignments || {}).forEach(([pilotId, assignments]) => {
+                AppState.assignments.set(pilotId, assignments.map(a => ({
+                    ...a,
+                    startTime: a.startTime ? new Date(a.startTime) : null,
+                    endTime: a.endTime ? new Date(a.endTime) : null
+                })));
+            });
+            
+            // Load months
+            AppState.loadedMonths.clear();
+            if (data.loadedMonths) {
+                Object.entries(data.loadedMonths).forEach(([key, monthData]) => {
+                    const assignments = new Map();
+                    Object.entries(monthData.assignments || {}).forEach(([pilotId, ass]) => {
+                        assignments.set(pilotId, ass.map(a => ({
+                            ...a,
+                            startTime: a.startTime ? new Date(a.startTime) : null,
+                            endTime: a.endTime ? new Date(a.endTime) : null
+                        })));
+                    });
+                    
+                    const rotations = (monthData.rotations || []).map(r => ({
+                        ...r,
+                        startTime: r.startTime ? new Date(r.startTime) : null,
+                        endTime: r.endTime ? new Date(r.endTime) : null
+                    }));
+                    
+                    const slots = (monthData.slots || []).map(s => {
+                        const rotation = rotations.find(r => r.id === s.rotationId);
+                        return { ...s, rotation };
+                    });
+                    
+                    AppState.loadedMonths.set(key, {
+                        flights: monthData.flights || [],
+                        pilots: (monthData.pilots || []).map(p => ({
+                            ...p,
+                            freeDays: new Set(p.freeDays || []),
+                            absences: new Set(p.absences || []),
+                            training: new Set(p.training || []),
+                            ftByMonth: p.ftByMonth || {},
+                            ftByFortnight: p.ftByFortnight || {}
+                        })),
+                        rotations,
+                        slots,
+                        assignments
+                    });
+                });
+            }
+            
+            if (data.holidays) {
+                AppState.holidays = new Map(Object.entries(data.holidays));
+            }
+            
+            if (data.pilotDBsByMonth) {
+                AppState.pilotDBsByMonth = data.pilotDBsByMonth;
+            }
+            
+            // Recalculate pilot hours
+            AppState.pilots.forEach(pilot => {
+                const assignments = AppState.assignments.get(pilot.id) || [];
+                pilot.ftByMonth = {};
+                pilot.ftByFortnight = {};
+                pilot.stByMonth = {};
+                assignments.forEach(a => {
+                    const start = new Date(a.startTime);
+                    const monthKey = `${start.getFullYear()}-${start.getMonth()}`;
+                    const fortnightKey = `${start.getFullYear()}-${start.getMonth()}-${start.getDate() <= 15 ? 1 : 2}`;
+                    
+                    if (a.type === 'ROT') {
+                        pilot.ftByMonth[monthKey] = (pilot.ftByMonth[monthKey] || 0) + (a.ftHours || 0);
+                        pilot.ftByFortnight[fortnightKey] = (pilot.ftByFortnight[fortnightKey] || 0) + (a.ftHours || 0);
+                        pilot.stByMonth[monthKey] = (pilot.stByMonth[monthKey] || 0) + (a.stHours || 0);
+                    } else if (a.type === 'DH') {
+                        pilot.stByMonth[monthKey] = (pilot.stByMonth[monthKey] || 0) + (a.dutyHours || a.stHours || 0);
+                    } else if (a.type === 'TRN') {
+                        pilot.stByMonth[monthKey] = (pilot.stByMonth[monthKey] || 0) + (a.stHours || 7);
+                    }
+                });
+            });
+            
+            // Update UI
+            this.renderMonthTabs();
+            if (AppState.activeMonth) {
+                this.switchToMonth(AppState.activeMonth);
+            }
+            this.updatePeriodLabel();
+            document.getElementById('pilotCount').textContent = AppState.pilots.length;
+            document.getElementById('rotationCount').textContent = AppState.rotations.length;
+            
+        } catch (e) {
+            console.error('Error restoring autosave:', e);
+        }
+    },
+    
+    autoSaveData() {
+        if (AppState.rotations.length === 0 && AppState.pilots.length === 0 && AppState.loadedMonths.size === 0) return;
+        
+        try {
+            const assignmentsObj = {};
+            AppState.assignments.forEach((value, key) => {
+                assignmentsObj[key] = value.map(a => ({
+                    ...a,
+                    startTime: a.startTime instanceof Date ? a.startTime.toISOString() : a.startTime,
+                    endTime: a.endTime instanceof Date ? a.endTime.toISOString() : a.endTime
+                }));
+            });
+            
+            const loadedMonthsObj = {};
+            AppState.loadedMonths.forEach((data, key) => {
+                const monthAssignments = {};
+                (data.assignments || new Map()).forEach((value, pilotId) => {
+                    monthAssignments[pilotId] = value.map(a => ({
+                        ...a,
+                        startTime: a.startTime instanceof Date ? a.startTime.toISOString() : a.startTime,
+                        endTime: a.endTime instanceof Date ? a.endTime.toISOString() : a.endTime
+                    }));
+                });
+                
+                loadedMonthsObj[key] = {
+                    flights: data.flights || [],
+                    pilots: (data.pilots || []).map(p => ({
+                        ...p,
+                        freeDays: p.freeDays instanceof Set ? [...p.freeDays] : (p.freeDays || []),
+                        absences: p.absences instanceof Set ? [...p.absences] : (p.absences || []),
+                        training: p.training instanceof Set ? [...p.training] : (p.training || [])
+                    })),
+                    rotations: (data.rotations || []).map(r => ({
+                        ...r,
+                        startTime: r.startTime instanceof Date ? r.startTime.toISOString() : r.startTime,
+                        endTime: r.endTime instanceof Date ? r.endTime.toISOString() : r.endTime
+                    })),
+                    slots: (data.slots || []).map(s => ({ id: s.id, rotationId: s.rotationId, role: s.role, pilotId: s.pilotId, pilotName: s.pilotName })),
+                    assignments: monthAssignments
+                };
+            });
+            
+            const saveData = {
+                version: '2.0',
+                saveDate: new Date().toISOString(),
+                currentPeriod: AppState.currentPeriod,
+                activeMonth: AppState.activeMonth,
+                itinerary: AppState.itinerary,
+                pilots: AppState.pilots.map(p => ({
+                    ...p,
+                    freeDays: p.freeDays instanceof Set ? [...p.freeDays] : (p.freeDays || []),
+                    absences: p.absences instanceof Set ? [...p.absences] : (p.absences || []),
+                    training: p.training instanceof Set ? [...p.training] : (p.training || [])
+                })),
+                rotations: AppState.rotations.map(r => ({
+                    ...r,
+                    startTime: r.startTime instanceof Date ? r.startTime.toISOString() : r.startTime,
+                    endTime: r.endTime instanceof Date ? r.endTime.toISOString() : r.endTime
+                })),
+                slots: AppState.slots.map(s => ({ id: s.id, rotationId: s.rotationId, role: s.role, pilotId: s.pilotId, pilotName: s.pilotName })),
+                assignments: assignmentsObj,
+                loadedMonths: loadedMonthsObj,
+                holidays: Object.fromEntries(AppState.holidays),
+                pilotDBsByMonth: AppState.pilotDBsByMonth
+            };
+            
+            localStorage.setItem(CONFIG.STORAGE_KEY + '_autosave', JSON.stringify(saveData));
+            console.log('Auto-saved at', new Date().toLocaleTimeString());
+        } catch (e) {
+            console.error('Error auto-saving:', e);
+        }
     },
     
     bindNavigation() {
@@ -2414,6 +2959,16 @@ const UIController = {
             e.target.value = '';
         });
         
+        // Clear cache button
+        document.getElementById('clearCacheBtn')?.addEventListener('click', () => {
+            if (confirm('¿Limpiar todos los datos guardados localmente? Esto no afecta los archivos exportados.')) {
+                localStorage.removeItem(CONFIG.STORAGE_KEY);
+                localStorage.removeItem(CONFIG.STORAGE_KEY + '_autosave');
+                Toast.show('success', 'Cache limpiado', 'Datos locales eliminados');
+                location.reload();
+            }
+        });
+        
         // ========== BULK ROTATION SELECTION ==========
         document.getElementById('selectAllRotationsBtn')?.addEventListener('click', () => this.toggleSelectAllRotations());
         document.getElementById('bulkUnassignBtn')?.addEventListener('click', () => this.bulkUnassignRotations());
@@ -2423,62 +2978,199 @@ const UIController = {
         document.getElementById('itineraryFile').addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (!file) return;
-            try {
-                const result = await DataLoader.loadItinerary(file);
-                const flights = result.flights;
-                const period = result.period;
-                
-                document.getElementById('itineraryUpload').classList.add('loaded');
-                document.getElementById('itineraryStatus').textContent = `✓ ${flights.length} vuelos`;
-                document.getElementById('itineraryStatus').className = 'upload-status success';
-                
-                // Update month stats if active
-                if (AppState.activeMonth) {
-                    this.updateMonthStats();
-                    this.checkReadyToGenerate();
-                } else {
-                    document.getElementById('flightCountInfo')?.textContent && (document.getElementById('flightCountInfo').textContent = `${flights.length} vuelos`);
+            
+            const statusEl = document.getElementById('itineraryStatus');
+            const uploadEl = document.getElementById('itineraryUpload');
+            
+            statusEl.textContent = 'Cargando...';
+            statusEl.className = 'upload-status';
+            
+            // Use setTimeout to prevent UI blocking
+            setTimeout(async () => {
+                try {
+                    const result = await DataLoader.loadItinerary(file);
+                    const flights = result.flights;
+                    const period = result.period;
+                    
+                    uploadEl.classList.add('loaded');
+                    statusEl.textContent = `✓ ${flights.length} vuelos`;
+                    statusEl.className = 'upload-status success';
+                    
+                    // Update period from file
+                    if (period) {
+                        const [year, month] = period.split('-');
+                        AppState.currentPeriod = { year: parseInt(year), month: parseInt(month) };
+                        this.updatePeriodLabel();
+                    }
+                    
+                    // Save to current month
+                    const monthKey = `${AppState.currentPeriod.year}-${String(AppState.currentPeriod.month).padStart(2,'0')}`;
+                    if (!AppState.loadedMonths.has(monthKey)) {
+                        AppState.loadedMonths.set(monthKey, { flights: [], pilots: [], rotations: [], slots: [], assignments: new Map() });
+                    }
+                    AppState.loadedMonths.get(monthKey).flights = flights;
+                    
                     this.checkReadyToProcess();
+                    this.updateMonthStats();
+                    Toast.show('success', 'Itinerario cargado', `${flights.length} vuelos para ${monthKey}`);
+                    
+                } catch (error) {
+                    console.error('Error loading itinerary:', error);
+                    statusEl.textContent = `✗ Error`;
+                    statusEl.className = 'upload-status error';
+                    Toast.show('error', 'Error', error.message || 'No se pudo cargar el itinerario');
                 }
-            } catch (error) {
-                document.getElementById('itineraryStatus').textContent = `✗ Error`;
-                document.getElementById('itineraryStatus').className = 'upload-status error';
-            }
+            }, 50);
+            
+            e.target.value = ''; // Reset input
         });
         
         document.getElementById('pilotsFile').addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (!file) return;
-            try {
-                const result = await DataLoader.loadPilots(file);
-                const pilots = result.pilots;
-                const period = result.month;
-                
-                document.getElementById('pilotsUpload').classList.add('loaded');
-                document.getElementById('pilotsStatus').textContent = `✓ ${pilots.length} pilotos`;
-                document.getElementById('pilotsStatus').className = 'upload-status success';
-                document.getElementById('pilotCount').textContent = pilots.length;
-                
-                // Show period badge
-                if (period) {
-                    const [year, month] = period.split('-');
-                    const monthNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-                    document.getElementById('pilotsPeriod').textContent = `📅 ${monthNames[parseInt(month) - 1]} ${year}`;
-                    document.getElementById('pilotsPeriod').classList.add('visible');
-                    AppState.pilotsPeriod = period;
+            
+            const statusEl = document.getElementById('pilotsStatus');
+            const uploadEl = document.getElementById('pilotsUpload');
+            
+            statusEl.textContent = 'Cargando...';
+            statusEl.className = 'upload-status';
+            
+            // Use setTimeout to prevent UI blocking
+            setTimeout(async () => {
+                try {
+                    const result = await DataLoader.loadPilots(file);
+                    const pilots = result.pilots;
+                    const period = result.month;
+                    
+                    uploadEl.classList.add('loaded');
+                    statusEl.textContent = `✓ ${pilots.length} pilotos`;
+                    statusEl.className = 'upload-status success';
+                    document.getElementById('pilotCount').textContent = pilots.length;
+                    
+                    // Update period if detected from file
+                    if (period) {
+                        const [year, month] = period.split('-');
+                        AppState.pilotsPeriod = period;
+                        AppState.currentPeriod = { year: parseInt(year), month: parseInt(month) };
+                        this.updatePeriodLabel();
+                    }
+                    
+                    // Save to current month
+                    const monthKey = `${AppState.currentPeriod.year}-${String(AppState.currentPeriod.month).padStart(2,'0')}`;
+                    if (!AppState.loadedMonths.has(monthKey)) {
+                        AppState.loadedMonths.set(monthKey, { flights: [], pilots: [], rotations: [], slots: [], assignments: new Map() });
+                    }
+                    AppState.loadedMonths.get(monthKey).pilots = pilots;
+                    
+                    // Update filters
+                    this.updateBaseFilters();
+                    this.updateMonthFilters();
+                    
+                    this.checkReadyToProcess();
+                    this.updateMonthStats();
+                    Toast.show('success', 'Pilotos cargados', `${pilots.length} pilotos para ${monthKey}`);
+                    
+                } catch (error) {
+                    console.error('Error loading pilots:', error);
+                    statusEl.textContent = `✗ Error`;
+                    statusEl.className = 'upload-status error';
+                    Toast.show('error', 'Error', error.message || 'No se pudo cargar los pilotos');
                 }
-                
-                this.updateBaseFilters();
-                this.updatePilotDBSelector();
-                this.checkReadyToProcess();
-                this.checkPeriodMatch();
-            } catch (error) {
-                document.getElementById('pilotsStatus').textContent = `✗ Error`;
-                document.getElementById('pilotsStatus').className = 'upload-status error';
-            }
+            }, 50);
+            
+            e.target.value = ''; // Reset input
         });
         
         document.getElementById('generateRotationsBtn').addEventListener('click', () => this.generateRotations());
+        
+        // Badge toggle handlers
+        document.getElementById('showConsecutiveToggle')?.addEventListener('change', (e) => {
+            AppState.showConsecutiveBadge = e.target.checked;
+            this.renderCurrentView();
+        });
+        document.getElementById('showDFBToggle')?.addEventListener('change', (e) => {
+            AppState.showDFBBadge = e.target.checked;
+            this.renderCurrentView();
+        });
+        
+        // Month filter handlers
+        document.getElementById('rotationsMonthFilter')?.addEventListener('change', (e) => {
+            AppState.filters.rotationsMonth = e.target.value;
+            this.renderRotationsList();
+        });
+        document.getElementById('pilotsMonthFilter')?.addEventListener('change', (e) => {
+            this.filterPilotsByMonth(e.target.value);
+        });
+    },
+    
+    filterPilotsByMonth(monthKey) {
+        if (!monthKey) {
+            // Show all pilots
+            this.renderPilotsList();
+            return;
+        }
+        
+        // Get pilots for specific month from pilotDBsByMonth
+        const monthPilots = AppState.pilotDBsByMonth[monthKey];
+        if (monthPilots) {
+            // Temporarily override for rendering
+            const originalPilots = AppState.pilots;
+            AppState.pilots = monthPilots.map(p => ({
+                ...p,
+                freeDays: new Set(p.freeDays || []),
+                absences: new Set(p.absences || []),
+                training: new Set(p.training || [])
+            }));
+            this.renderPilotsList();
+            AppState.pilots = originalPilots;
+        }
+    },
+    
+    updateMonthFilters() {
+        // Update month filter dropdowns with available months
+        const months = new Set();
+        
+        // From loaded months
+        AppState.loadedMonths.forEach((_, key) => months.add(key));
+        
+        // From pilotDBsByMonth
+        Object.keys(AppState.pilotDBsByMonth).forEach(key => months.add(key));
+        
+        // From rotations
+        AppState.rotations.forEach(r => {
+            if (r.startTime) {
+                const d = new Date(r.startTime);
+                const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+                months.add(key);
+            }
+        });
+        
+        const sortedMonths = [...months].sort();
+        const monthNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+        
+        // Update rotations month filter
+        const rotationsFilter = document.getElementById('rotationsMonthFilter');
+        if (rotationsFilter) {
+            const current = rotationsFilter.value;
+            rotationsFilter.innerHTML = '<option value="">Todos los meses</option>' +
+                sortedMonths.map(m => {
+                    const [year, month] = m.split('-');
+                    return `<option value="${m}">${monthNames[parseInt(month) - 1]} ${year}</option>`;
+                }).join('');
+            rotationsFilter.value = current;
+        }
+        
+        // Update pilots month filter
+        const pilotsFilter = document.getElementById('pilotsMonthFilter');
+        if (pilotsFilter) {
+            const current = pilotsFilter.value;
+            pilotsFilter.innerHTML = '<option value="">Todos los meses</option>' +
+                sortedMonths.map(m => {
+                    const [year, month] = m.split('-');
+                    return `<option value="${m}">${monthNames[parseInt(month) - 1]} ${year}</option>`;
+                }).join('');
+            pilotsFilter.value = current;
+        }
     },
     
     checkPeriodMatch() {
@@ -2845,7 +3537,7 @@ const UIController = {
             btn.disabled = false;
             document.getElementById('rotationCount').textContent = rotations.length;
             document.getElementById('autoAssignBtn').disabled = false;
-            document.getElementById('validateBtn').disabled = false;
+            
             
             if (rotations.length > 0) {
                 const firstDate = new Date(rotations[0].startTime);
@@ -2853,9 +3545,20 @@ const UIController = {
                 this.updatePeriodLabel();
             }
             
+            // Save to current month
+            const monthKey = `${AppState.currentPeriod.year}-${String(AppState.currentPeriod.month).padStart(2,'0')}`;
+            if (!AppState.loadedMonths.has(monthKey)) {
+                AppState.loadedMonths.set(monthKey, { flights: [], pilots: [], rotations: [], slots: [], assignments: new Map() });
+            }
+            const monthData = AppState.loadedMonths.get(monthKey);
+            monthData.rotations = AppState.rotations;
+            monthData.slots = AppState.slots;
+            
             // Update tail filters with available aircraft
             this.updateTailFilters();
             this.updateOriginFilter();
+            this.updateMonthFilters();
+            this.updateMonthStats();
             
             Logger.log('create', `${rotations.length} rotaciones generadas`, `Período: ${AppState.currentPeriod.month}/${AppState.currentPeriod.year}`);
             Toast.show('success', 'Rotaciones', `${rotations.length} rotaciones generadas`);
@@ -2898,7 +3601,7 @@ const UIController = {
             }, 800);
         });
         
-        document.getElementById('validateBtn').addEventListener('click', () => this.runValidation());
+        
         document.getElementById('saveStateBtn').addEventListener('click', () => this.saveCurrentState());
         document.getElementById('loadStateBtn').addEventListener('click', () => document.getElementById('loadStateFile').click());
         document.getElementById('loadStateFile').addEventListener('change', async (e) => {
@@ -2944,7 +3647,7 @@ const UIController = {
                 document.getElementById('pilotCount').textContent = AppState.pilots.length;
                 document.getElementById('rotationCount').textContent = AppState.rotations.length;
                 document.getElementById('autoAssignBtn').disabled = false;
-                document.getElementById('validateBtn').disabled = false;
+                
                 document.getElementById('exportBtn').disabled = false;
                 
                 Toast.show('success', 'Cargado', 'Estado cargado correctamente');
@@ -3161,7 +3864,7 @@ const UIController = {
                         document.getElementById('pilotCount').textContent = AppState.pilots.length;
                         document.getElementById('rotationCount').textContent = AppState.rotations.length;
                         document.getElementById('autoAssignBtn').disabled = false;
-                        document.getElementById('validateBtn').disabled = false;
+                        
                         document.getElementById('exportBtn').disabled = false;
                         Toast.show('success', 'Cargado', 'Estado restaurado');
                         this.renderCurrentView();
@@ -3320,13 +4023,13 @@ const UIController = {
             AppState.currentPeriod.month--;
             if (AppState.currentPeriod.month < 1) { AppState.currentPeriod.month = 12; AppState.currentPeriod.year--; }
             this.updatePeriodLabel();
-            this.renderCurrentView();
+            this.loadMonthData();
         });
         document.getElementById('nextPeriod').addEventListener('click', () => {
             AppState.currentPeriod.month++;
             if (AppState.currentPeriod.month > 12) { AppState.currentPeriod.month = 1; AppState.currentPeriod.year++; }
             this.updatePeriodLabel();
-            this.renderCurrentView();
+            this.loadMonthData();
         });
         document.querySelectorAll('.toggle-btn').forEach(btn => {
             btn.addEventListener('click', () => {
@@ -3335,6 +4038,56 @@ const UIController = {
                 AppState.viewRange = btn.dataset.range;
                 this.renderCurrentView();
             });
+        });
+    },
+    
+    // Load data for the current month from loadedMonths
+    loadMonthData() {
+        const monthKey = `${AppState.currentPeriod.year}-${String(AppState.currentPeriod.month).padStart(2,'0')}`;
+        
+        // Check if we have data for this month
+        if (AppState.loadedMonths.has(monthKey)) {
+            const monthData = AppState.loadedMonths.get(monthKey);
+            
+            // Load the data for this month
+            AppState.itinerary = monthData.flights || [];
+            AppState.pilots = monthData.pilots || [];
+            AppState.rotations = monthData.rotations || [];
+            AppState.slots = monthData.slots || [];
+            AppState.assignments = monthData.assignments || new Map();
+            
+            // Re-link slots to rotations
+            AppState.slots.forEach(slot => {
+                slot.rotation = AppState.rotations.find(r => r.id === slot.rotationId);
+            });
+            
+            // Update counters
+            document.getElementById('pilotCount').textContent = AppState.pilots.length;
+            document.getElementById('rotationCount').textContent = AppState.rotations.length;
+            
+            Toast.show('info', 'Mes cargado', `${monthKey} - ${AppState.pilots.length} pilotos, ${AppState.rotations.length} rotaciones`);
+        } else {
+            // No data for this month - show empty state
+            // Don't clear current data, just show message
+            Toast.show('info', 'Sin datos', `No hay datos cargados para ${monthKey}`);
+        }
+        
+        this.renderCurrentView();
+        this.updateMonthStats();
+    },
+    
+    // Save current month data before switching
+    saveCurrentMonthData() {
+        if (AppState.rotations.length === 0 && AppState.pilots.length === 0) return;
+        
+        const monthKey = `${AppState.currentPeriod.year}-${String(AppState.currentPeriod.month).padStart(2,'0')}`;
+        
+        AppState.loadedMonths.set(monthKey, {
+            flights: AppState.itinerary,
+            pilots: AppState.pilots,
+            rotations: AppState.rotations,
+            slots: AppState.slots,
+            assignments: AppState.assignments
         });
     },
     
@@ -3576,25 +4329,51 @@ const UIController = {
             slots = slots.filter(s => s.rotation?.origin === AppState.filters.rotationsOrigin);
         }
         
-        // Apply date filter (from rotations view)
+        // Apply date filter (from rotations view) - fix timezone offset
         if (AppState.filters.rotationsDate) {
-            const filterDate = new Date(AppState.filters.rotationsDate);
+            const [year, month, day] = AppState.filters.rotationsDate.split('-').map(Number);
             slots = slots.filter(s => {
                 const rotDate = new Date(s.rotation?.startTime);
-                return rotDate.toDateString() === filterDate.toDateString();
+                return rotDate.getFullYear() === year && 
+                       rotDate.getMonth() + 1 === month && 
+                       rotDate.getDate() === day;
+            });
+        }
+        
+        // Apply month filter (from rotations view)
+        if (AppState.filters.rotationsMonth) {
+            const [filterYear, filterMonth] = AppState.filters.rotationsMonth.split('-').map(Number);
+            slots = slots.filter(s => {
+                const rotDate = new Date(s.rotation?.startTime);
+                return rotDate.getFullYear() === filterYear && rotDate.getMonth() + 1 === filterMonth;
             });
         }
         
         // Sort by date
         slots.sort((a, b) => new Date(a.rotation?.startTime) - new Date(b.rotation?.startTime));
         
-        container.innerHTML = slots.map(slot => {
-            const r = slot.rotation;
+        // Group slots by rotation to avoid duplicates
+        const rotationMap = new Map();
+        slots.forEach(slot => {
+            if (!slot.rotation) return;
+            const rotId = slot.rotation.id;
+            if (!rotationMap.has(rotId)) {
+                rotationMap.set(rotId, { rotation: slot.rotation, slots: [] });
+            }
+            rotationMap.get(rotId).slots.push(slot);
+        });
+        
+        container.innerHTML = Array.from(rotationMap.values()).map(({ rotation: r, slots: rotSlots }) => {
             if (!r) return '';
             const nightClass = r.isNight ? 'style="color:var(--event-rotation-night)"' : '';
-            const isAssigned = !!slot.pilotId;
-            const pilotDisplay = isAssigned ? slot.pilotName?.split(' ')[0] || slot.pilotId : 'Sin asignar';
             const isSelected = AppState.selectedRotations.has(r.id);
+            
+            // Show all slots for this rotation
+            const slotsInfo = rotSlots.map(s => {
+                const isAssigned = !!s.pilotId;
+                const pilotDisplay = isAssigned ? (s.pilotName?.split(' ')[0] || s.pilotId) : '—';
+                return `<span class="slot-mini ${s.role.toLowerCase()} ${isAssigned ? 'assigned' : ''}">${s.role}: ${pilotDisplay}</span>`;
+            }).join('');
             
             // Calculate ST Gap (Max ST allowed - actual ST)
             const crew = r.crew || 2;
@@ -3611,7 +4390,7 @@ const UIController = {
             return `<div class="rotation-card ${isSelected ? 'selected' : ''}" data-rotation-id="${r.id}">
                 <div class="rotation-checkbox ${isSelected ? 'checked' : ''}" data-rotation-id="${r.id}"></div>
                 <div class="rotation-item">
-                    <div class="rotation-id" ${nightClass}>${r.id}<br><span style="font-size:9px;color:var(--text-muted)">${slot.role}${r.isNight ? ' 🌙' : ''}</span></div>
+                    <div class="rotation-id" ${nightClass}>${r.id}${r.isNight ? ' 🌙' : ''}</div>
                     <div class="rotation-route">
                         <span class="rotation-station">${r.origin}</span><span class="rotation-arrow">→</span><span class="rotation-station">${r.destination}</span>
                         <span class="rotation-route-detail">${r.route}</span>
@@ -3627,7 +4406,7 @@ const UIController = {
                         <div class="rotation-hour"><div class="rotation-hour-value" style="color:${stGapColor}">${stGap.toFixed(2)}</div><div class="rotation-hour-label">ST Gap</div></div>
                         <div class="rotation-hour"><div class="rotation-hour-value">${r.restBase}/${r.restAway}</div><div class="rotation-hour-label">Rest</div></div>
                     </div>
-                    <div><span class="status-badge ${isAssigned ? 'assigned' : 'unassigned'}">${pilotDisplay}</span></div>
+                    <div class="rotation-slots">${slotsInfo}</div>
                 </div>
             </div>`;
         }).join('');
@@ -4038,6 +4817,12 @@ const UIController = {
         const operationalTypes = new Set(['ROT', 'DH', 'TRN', 'OFI']);
         const nonOperationalTypes = new Set(['OFF', 'VAC', 'FREE', 'LUS', 'INC', 'L']);
         
+        // Check if badges should be shown
+        const showConsecutive = AppState.showConsecutiveBadge;
+        const showDFB = AppState.showDFBBadge;
+        
+        if (!showConsecutive && !showDFB) return; // Nothing to render
+        
         pilots.forEach(pilot => {
             const assignments = AppState.assignments.get(pilot.id) || [];
             const sorted = [...assignments].sort((a, b) => new Date(a.startTime) - new Date(b.startTime));
@@ -4125,8 +4910,8 @@ const UIController = {
                     const cell = document.querySelector(`.calendar-cell[data-pilot-id="${pilot.id}"][data-date="${dateStr}"]`);
                     if (!cell) continue;
                     
-                    // Add consecutive days badge (top right) - only if has operational assignment
-                    if (consecutiveDays > 0 && info.hasOp) {
+                    // Add consecutive days badge (top right) - only if toggle is on and has operational assignment
+                    if (showConsecutive && consecutiveDays > 0 && info.hasOp) {
                         const badge = document.createElement('div');
                         badge.className = 'day-consecutive-badge';
                         if (consecutiveDays >= 6) {
@@ -4139,8 +4924,8 @@ const UIController = {
                         cell.appendChild(badge);
                     }
                     
-                    // Add DFB badge (bottom right) - show if outside base
-                    if (daysFromBase > 0) {
+                    // Add DFB badge (bottom right) - only if toggle is on and outside base
+                    if (showDFB && daysFromBase > 0) {
                         const dfbBadge = document.createElement('div');
                         dfbBadge.className = 'day-dfb-badge';
                         if (daysFromBase >= 6) {
@@ -4382,6 +5167,15 @@ const UIController = {
         
         document.getElementById('modalTails').innerHTML = pilot.qualifiedTails.map(t => `<span class="tail-badge">${t}</span>`).join('');
         
+        // Show restrictions
+        const doNotFly = pilot.doNotFlyWith?.length > 0 ? pilot.doNotFlyWith.join(', ') : '—';
+        const limitedAirports = pilot.limitedAirports?.length > 0 ? pilot.limitedAirports.join(', ') : '—';
+        const restrictedAircraft = pilot.restrictedStations?.length > 0 ? pilot.restrictedStations.join(', ') : '—';
+        
+        document.getElementById('modalDoNotFlyWith').textContent = doNotFly;
+        document.getElementById('modalLimitedAirports').textContent = limitedAirports;
+        document.getElementById('modalRestrictedAircraft').textContent = restrictedAircraft;
+        
         const assignments = AppState.assignments.get(pilotId) || [];
         const sorted = [...assignments].sort((a, b) => new Date(a.startTime) - new Date(b.startTime));
         
@@ -4447,12 +5241,25 @@ const UIController = {
             newVerifyBtn.addEventListener('click', () => this.verifyPilot(pilotId));
         }
         
-        // Bind export button
-        const exportBtn = document.getElementById('exportPilotRosterBtn');
-        if (exportBtn) {
-            const newExportBtn = exportBtn.cloneNode(true);
-            exportBtn.parentNode.replaceChild(newExportBtn, exportBtn);
-            newExportBtn.addEventListener('click', () => this.exportPilotRoster(pilotId));
+        // Bind export buttons (UTC-5 and UTC)
+        const exportLocalBtn = document.getElementById('exportRosterLocal');
+        if (exportLocalBtn) {
+            const newBtn = exportLocalBtn.cloneNode(true);
+            exportLocalBtn.parentNode.replaceChild(newBtn, exportLocalBtn);
+            newBtn.addEventListener('click', () => {
+                ExportManager.exportPilotRoster(pilotId, false);
+                document.getElementById('exportMenu').style.display = 'none';
+            });
+        }
+        
+        const exportUTCBtn = document.getElementById('exportRosterUTC');
+        if (exportUTCBtn) {
+            const newBtn = exportUTCBtn.cloneNode(true);
+            exportUTCBtn.parentNode.replaceChild(newBtn, exportUTCBtn);
+            newBtn.addEventListener('click', () => {
+                ExportManager.exportPilotRoster(pilotId, true);
+                document.getElementById('exportMenu').style.display = 'none';
+            });
         }
         
         // Bind clear assignments button
@@ -4463,7 +5270,74 @@ const UIController = {
             newClearBtn.addEventListener('click', () => this.clearPilotAssignments(pilotId));
         }
         
+        // Bind restrictions edit buttons
+        this.bindRestrictionsEditing(pilot);
+        
         document.getElementById('pilotModal').classList.add('active');
+    },
+    
+    bindRestrictionsEditing(pilot) {
+        const editBtn = document.getElementById('editRestrictionsBtn');
+        const displayDiv = document.getElementById('restrictionsDisplay');
+        const editDiv = document.getElementById('restrictionsEdit');
+        const cancelBtn = document.getElementById('cancelRestrictionsBtn');
+        const saveBtn = document.getElementById('saveRestrictionsBtn');
+        
+        // Edit button
+        if (editBtn) {
+            const newEditBtn = editBtn.cloneNode(true);
+            editBtn.parentNode.replaceChild(newEditBtn, editBtn);
+            newEditBtn.addEventListener('click', () => {
+                // Populate edit fields
+                document.getElementById('editDoNotFlyWith').value = (pilot.doNotFlyWith || []).join(', ');
+                document.getElementById('editLimitedAirports').value = (pilot.limitedAirports || []).join(', ');
+                document.getElementById('editRestrictedAircraft').value = (pilot.restrictedAircraft || []).join(', ');
+                
+                displayDiv.style.display = 'none';
+                editDiv.style.display = 'flex';
+            });
+        }
+        
+        // Cancel button
+        if (cancelBtn) {
+            const newCancelBtn = cancelBtn.cloneNode(true);
+            cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
+            newCancelBtn.addEventListener('click', () => {
+                editDiv.style.display = 'none';
+                displayDiv.style.display = 'flex';
+            });
+        }
+        
+        // Save button
+        if (saveBtn) {
+            const newSaveBtn = saveBtn.cloneNode(true);
+            saveBtn.parentNode.replaceChild(newSaveBtn, saveBtn);
+            newSaveBtn.addEventListener('click', () => {
+                // Parse and save restrictions
+                const doNotFlyWith = document.getElementById('editDoNotFlyWith').value
+                    .split(',').map(s => s.trim().toUpperCase()).filter(s => s);
+                const limitedAirports = document.getElementById('editLimitedAirports').value
+                    .split(',').map(s => s.trim().toUpperCase()).filter(s => s);
+                const restrictedAircraft = document.getElementById('editRestrictedAircraft').value
+                    .split(',').map(s => s.trim().toUpperCase()).filter(s => s);
+                
+                // Update pilot
+                pilot.doNotFlyWith = doNotFlyWith;
+                pilot.limitedAirports = limitedAirports;
+                pilot.restrictedAircraft = restrictedAircraft;
+                
+                // Update display
+                document.getElementById('modalDoNotFlyWith').textContent = doNotFlyWith.length > 0 ? doNotFlyWith.join(', ') : '—';
+                document.getElementById('modalLimitedAirports').textContent = limitedAirports.length > 0 ? limitedAirports.join(', ') : '—';
+                document.getElementById('modalRestrictedAircraft').textContent = restrictedAircraft.length > 0 ? restrictedAircraft.join(', ') : '—';
+                
+                editDiv.style.display = 'none';
+                displayDiv.style.display = 'flex';
+                
+                Toast.show('success', 'Guardado', 'Restricciones actualizadas');
+                Logger.log('update', `Restricciones actualizadas para ${pilot.id}`);
+            });
+        }
     },
     
     verifyPilot(pilotId) {
@@ -5517,29 +6391,217 @@ const UIController = {
                    fEnd <= new Date(rotation.endTime).getTime() + 60000;
         }).sort((a, b) => Utils.combineDateTime(a.day, a.deptTime) - Utils.combineDateTime(b.day, b.deptTime));
         
+        // Store legs for editing
+        AppState.editingLegs = legs;
+        
+        let html = '<div class="legs-toolbar">';
+        html += '<button class="btn-small" id="addLegBtn">+ Agregar Tramo</button>';
+        html += '<button class="btn-small danger" id="splitRotationBtn">✂️ Dividir Rotación</button>';
+        html += '</div>';
+        
         if (legs.length === 0) {
-            // No legs found, show manual entry
-            container.innerHTML = `<div style="padding: 20px; text-align: center; color: var(--text-muted);">
+            html += `<div style="padding: 20px; text-align: center; color: var(--text-muted);">
                 No se encontraron tramos detallados para esta rotación.
                 <br><small>Ruta: ${rotation.route}</small>
             </div>`;
+        } else {
+            html += '<div class="legs-list">';
+            html += legs.map((leg, idx) => {
+                const date = new Date(leg.day).toISOString().split('T')[0];
+                const deptTime = `${String(leg.deptTime.hours).padStart(2,'0')}:${String(leg.deptTime.minutes).padStart(2,'0')}`;
+                const arvlTime = `${String(leg.arvlTime.hours).padStart(2,'0')}:${String(leg.arvlTime.minutes).padStart(2,'0')}`;
+                
+                return `<div class="leg-edit-item" data-leg-idx="${idx}">
+                    <span class="leg-number">#${idx + 1}</span>
+                    <input type="text" value="${leg.deptSta}" class="leg-origin" maxlength="3" style="text-transform:uppercase">
+                    <input type="text" value="${leg.arvlSta}" class="leg-dest" maxlength="3" style="text-transform:uppercase">
+                    <input type="date" value="${date}" class="leg-date">
+                    <input type="time" value="${deptTime}" class="leg-dept">
+                    <input type="time" value="${arvlTime}" class="leg-arvl">
+                    <button class="leg-remove-btn" data-leg-idx="${idx}" title="Quitar tramo">✕</button>
+                </div>`;
+            }).join('');
+            html += '</div>';
+        }
+        
+        container.innerHTML = html;
+        
+        // Bind add leg button
+        document.getElementById('addLegBtn')?.addEventListener('click', () => this.addLegToRotation(rotation));
+        
+        // Bind split button
+        document.getElementById('splitRotationBtn')?.addEventListener('click', () => this.showSplitRotationModal(rotation));
+        
+        // Bind remove buttons
+        container.querySelectorAll('.leg-remove-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const idx = parseInt(btn.dataset.legIdx);
+                this.removeLegFromRotation(rotation, idx);
+            });
+        });
+    },
+    
+    addLegToRotation(rotation) {
+        // Get last leg's destination as new origin
+        const legs = AppState.editingLegs || [];
+        const lastLeg = legs[legs.length - 1];
+        const newOrigin = lastLeg ? lastLeg.arvlSta : rotation.origin;
+        const newDate = lastLeg ? new Date(lastLeg.day) : new Date(rotation.startTime);
+        
+        // Create new leg
+        const newLeg = {
+            id: Utils.generateId('LEG-'),
+            day: newDate,
+            deptSta: newOrigin,
+            arvlSta: '',
+            deptTime: { hours: 12, minutes: 0 },
+            arvlTime: { hours: 14, minutes: 0 },
+            tail: rotation.tail,
+            flightNumber: ''
+        };
+        
+        AppState.itinerary.push(newLeg);
+        this.renderLegsEditor(rotation);
+        Toast.show('info', 'Tramo añadido', 'Completa los datos del nuevo tramo');
+    },
+    
+    removeLegFromRotation(rotation, legIdx) {
+        const legs = AppState.editingLegs || [];
+        if (legIdx < 0 || legIdx >= legs.length) return;
+        
+        if (!confirm('¿Eliminar este tramo de la rotación?')) return;
+        
+        const leg = legs[legIdx];
+        const itnIdx = AppState.itinerary.findIndex(f => 
+            f.tail === leg.tail && 
+            f.deptSta === leg.deptSta && 
+            f.arvlSta === leg.arvlSta &&
+            new Date(f.day).getTime() === new Date(leg.day).getTime()
+        );
+        
+        if (itnIdx !== -1) {
+            AppState.itinerary.splice(itnIdx, 1);
+        }
+        
+        this.renderLegsEditor(rotation);
+        Toast.show('success', 'Eliminado', 'Tramo eliminado');
+    },
+    
+    showSplitRotationModal(rotation) {
+        const legs = AppState.editingLegs || [];
+        if (legs.length < 2) {
+            Toast.show('warning', 'No disponible', 'Se necesitan al menos 2 tramos para dividir');
             return;
         }
         
-        container.innerHTML = legs.map((leg, idx) => {
-            const date = new Date(leg.day).toISOString().split('T')[0];
-            const deptTime = `${String(leg.deptTime.hours).padStart(2,'0')}:${String(leg.deptTime.minutes).padStart(2,'0')}`;
-            const arvlTime = `${String(leg.arvlTime.hours).padStart(2,'0')}:${String(leg.arvlTime.minutes).padStart(2,'0')}`;
-            
-            return `<div class="leg-edit-item" data-leg-idx="${idx}">
-                <span class="leg-number">#${idx + 1}</span>
-                <input type="text" value="${leg.deptSta}" class="leg-origin" maxlength="3" style="text-transform:uppercase">
-                <input type="text" value="${leg.arvlSta}" class="leg-dest" maxlength="3" style="text-transform:uppercase">
-                <input type="date" value="${date}" class="leg-date">
-                <input type="time" value="${deptTime}" class="leg-dept">
-                <input type="time" value="${arvlTime}" class="leg-arvl">
-            </div>`;
-        }).join('');
+        // Show split point selector
+        let html = '<div class="split-modal-content">';
+        html += '<h4>Selecciona el punto de división</h4>';
+        html += '<p>La rotación se dividirá después del tramo seleccionado:</p>';
+        html += '<div class="split-options">';
+        
+        legs.slice(0, -1).forEach((leg, idx) => {
+            html += `<label class="split-option">
+                <input type="radio" name="splitPoint" value="${idx}">
+                <span>Después de #${idx + 1}: ${leg.deptSta}→${leg.arvlSta}</span>
+            </label>`;
+        });
+        
+        html += '</div>';
+        html += '<div class="split-actions">';
+        html += '<button class="btn-secondary" id="cancelSplitBtn">Cancelar</button>';
+        html += '<button class="btn-primary" id="confirmSplitBtn">Dividir</button>';
+        html += '</div>';
+        html += '</div>';
+        
+        // Create temporary modal
+        const modal = document.createElement('div');
+        modal.className = 'modal active';
+        modal.id = 'splitModal';
+        modal.innerHTML = `<div class="modal-content" style="max-width:400px">${html}</div>`;
+        document.body.appendChild(modal);
+        
+        document.getElementById('cancelSplitBtn').onclick = () => modal.remove();
+        document.getElementById('confirmSplitBtn').onclick = () => {
+            const selected = document.querySelector('input[name="splitPoint"]:checked');
+            if (!selected) {
+                Toast.show('warning', 'Selección', 'Selecciona un punto de división');
+                return;
+            }
+            this.splitRotationAt(rotation, parseInt(selected.value));
+            modal.remove();
+        };
+    },
+    
+    splitRotationAt(rotation, splitIdx) {
+        const legs = AppState.editingLegs || [];
+        if (splitIdx < 0 || splitIdx >= legs.length - 1) return;
+        
+        // First part: legs 0 to splitIdx
+        const firstLegs = legs.slice(0, splitIdx + 1);
+        // Second part: legs splitIdx+1 to end
+        const secondLegs = legs.slice(splitIdx + 1);
+        
+        // Update original rotation to first part
+        const firstLast = firstLegs[firstLegs.length - 1];
+        rotation.endTime = Utils.combineDateTime(firstLast.day, firstLast.arvlTime);
+        rotation.destination = firstLast.arvlSta;
+        rotation.route = firstLegs.map(l => l.deptSta).concat([firstLast.arvlSta]).join('-');
+        
+        // Calculate new FT/ST for first part
+        let ft1 = 0;
+        firstLegs.forEach(leg => {
+            const start = Utils.combineDateTime(leg.day, leg.deptTime);
+            const end = Utils.combineDateTime(leg.day, leg.arvlTime);
+            ft1 += (end - start) / (1000 * 60 * 60);
+        });
+        rotation.ftTotal = ft1;
+        rotation.stTotal = ft1 + (CONFIG.DOMESTIC_ROUTES.has(rotation.route.split('-').slice(0,2).join('-')) ? CONFIG.ST_ADD_DOMESTIC : CONFIG.ST_ADD_INTERNATIONAL);
+        
+        // Create new rotation for second part
+        const secondFirst = secondLegs[0];
+        const secondLast = secondLegs[secondLegs.length - 1];
+        
+        let ft2 = 0;
+        secondLegs.forEach(leg => {
+            const start = Utils.combineDateTime(leg.day, leg.deptTime);
+            const end = Utils.combineDateTime(leg.day, leg.arvlTime);
+            ft2 += (end - start) / (1000 * 60 * 60);
+        });
+        
+        const newRotation = {
+            id: `ROT-${AppState.rotations.length + 1}`,
+            origin: secondFirst.deptSta,
+            destination: secondLast.arvlSta,
+            route: secondLegs.map(l => l.deptSta).concat([secondLast.arvlSta]).join('-'),
+            startTime: Utils.combineDateTime(secondFirst.day, secondFirst.deptTime),
+            endTime: Utils.combineDateTime(secondLast.day, secondLast.arvlTime),
+            tail: rotation.tail,
+            ftTotal: ft2,
+            stTotal: ft2 + CONFIG.ST_ADD_INTERNATIONAL,
+            crew: rotation.crew || 2,
+            restBase: rotation.restBase,
+            restAway: rotation.restAway,
+            isNight: rotation.isNight
+        };
+        
+        AppState.rotations.push(newRotation);
+        
+        // Create slots for new rotation
+        const newSlot = {
+            id: Utils.generateId('SLOT-'),
+            rotationId: newRotation.id,
+            role: 'CAP',
+            pilotId: null,
+            pilotName: null,
+            rotation: newRotation
+        };
+        AppState.slots.push(newSlot);
+        
+        // Close modal and refresh
+        document.getElementById('rotationEditModal').classList.remove('active');
+        this.renderCurrentView();
+        Toast.show('success', 'Dividida', 'Rotación dividida en dos');
     },
     
     renderSlotsEditor(slots) {
@@ -5722,7 +6784,12 @@ const UIController = {
     },
     
     showMergeRotationsModal() {
-        const rotations = [...AppState.rotations].sort((a, b) => new Date(a.startTime) - new Date(b.startTime));
+        // Sort by rotation ID number (ROT-1, ROT-2, etc)
+        const rotations = [...AppState.rotations].sort((a, b) => {
+            const numA = parseInt(a.id.replace(/\D/g, '')) || 0;
+            const numB = parseInt(b.id.replace(/\D/g, '')) || 0;
+            return numA - numB;
+        });
         
         const select1 = document.getElementById('mergeRotation1');
         const select2 = document.getElementById('mergeRotation2');
@@ -5897,6 +6964,9 @@ document.addEventListener('DOMContentLoaded', () => {
             // Set role on body for CSS visibility
             document.body.dataset.role = user.role;
         }
+        
+        // Initialize auto-save
+        AutoSave.init();
         
         UIController.init();
         UIController.bindRotationEditModal();
